@@ -10,7 +10,7 @@ jobs:
   check-formatting:
     name: Check Formatting
     container:
-      image: ghcr.io/astral-sh/ruff:python3.12-bookworm-slim
+      image: ghcr.io/astral-sh/ruff:0.6.9
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -25,7 +25,7 @@ jobs:
     name: Check Linting
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/astral-sh/ruff:python3.12-bookworm-slim
+      image: ghcr.io/astral-sh/ruff:0.6.9
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
