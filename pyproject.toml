@@ -1,7 +1,7 @@
 [project]
 name = "jwtninja"
 version = "0.1.0"
-description = "Add your description here"
+description = "A simple and fully-typed auth library for Django Ninja based on PyJWT."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -30,3 +30,6 @@ exclude = [
     "migrations",
     "static_files",
 ]
+
+[project.urls]
+Homepage = "https://github.com/dvf/jwt-ninja"
