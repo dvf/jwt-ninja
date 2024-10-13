@@ -9,8 +9,6 @@ concurrency:
 jobs:
   check-formatting:
     name: Check Formatting
-    container:
-      image: ghcr.io/astral-sh/ruff:0.6.9
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -18,22 +16,22 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: "ruff: Check formatting"
-        run: /ruff format --check
+      - uses: astral-sh/ruff-action@v1
+        with:
+          args: "format --check"
 
   check-linting:
     name: Check Linting
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/astral-sh/ruff:0.6.9
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      - name: "ruff: Check linting"
-        run: /ruff check --output-format=github .
+      - uses: astral-sh/ruff-action@v1
+        with:
+          args: "check --output-format=github"
 
   run-tests:
     name: Run Tests (pytest)
