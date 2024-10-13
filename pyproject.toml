@@ -1,0 +1,32 @@
+[project]
+name = "jwtninja"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.9.2",
+    "pydantic-settings>=2.5.2",
+    "uuid6>=2024.7.10",
+    "pyjwt>=2.9.0",
+    "django-ninja>=1.3.0",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest-django>=4.9.0",
+    "pytest-freezer>=0.4.8",
+    "pytest-mock>=3.14.0",
+    "pytest>=8.3.3",
+    "ruff>=0.6.9",
+]
+
+[tool.ruff]
+exclude = [
+    ".git",
+    ".github",
+    ".venv",
+    ".vscode",
+    "migrations",
+    "static_files",
+]
