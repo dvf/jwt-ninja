@@ -19,7 +19,7 @@ jobs:
           fetch-depth: 1
 
       - name: "ruff: Check formatting"
-        run: format --check
+        run: /ruff format --check
 
   check-linting:
     name: Check Linting
@@ -33,7 +33,7 @@ jobs:
           fetch-depth: 1
 
       - name: "ruff: Check linting"
-        run: check --output-format=github .
+        run: /ruff check --output-format=github .
 
   run-tests:
     name: Run Tests (pytest)
