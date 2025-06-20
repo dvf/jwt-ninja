@@ -1,6 +1,6 @@
 [project]
 name = "jwtninja"
-version = "0.1.6"
+version = "0.1.7"
 description = "A simple and fully-typed auth library for Django Ninja based on PyJWT."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -32,13 +32,15 @@ exclude = [
 ]
 line-length = 120
 target-version = "py312"
+
+[tool.ruff.lint]
 select = [
-  "E",    # pycodestyle
-  "W",    # pycodestyle
-  "F",    # pyflakes
-  "I",    # isort
-  "C4",   # flake8-comprehensions
-  "TID",  # flake8-tidy-imports
+    "E",    # pycodestyle
+    "W",    # pycodestyle
+    "F",    # pyflakes
+    "I",    # isort
+    "C4",   # flake8-comprehensions
+    "TID",  # flake8-tidy-imports
 ]
 ignore = [
     "TID252",  # Prefer absolute imports over relative imports from parent modules
