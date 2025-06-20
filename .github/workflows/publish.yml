@@ -7,7 +7,7 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/astral-sh/uv:python3.13-bookworm-slim
+      image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
     permissions:
       contents: write
     steps:

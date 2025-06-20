@@ -14,7 +14,6 @@ from ..handlers import error_handler
 from ..models import Session
 from ..types import JWTPayload
 
-
 User = get_user_model()
 
 
