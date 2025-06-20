@@ -43,14 +43,16 @@ This will register the following endpoints:
 - `/auth/logout/` Log out of your current session
 - `/auth/logout/all/` Log out of all your sessions
 
-Use the `JWTAuth` class to protect your views. You can use the supplied `AuthedRequest` type to get annotations for the user and the session:
+Use the `JWTAuth` class to protect your views. You can use the `AuthedRequest` type to get annotations for the user and the session:
 
 ```python
+from ninja import Router
 from jwt_ninja.auth_classes import JWTAuth
-from jwt_ninja.types import AuthedRequest
+from jwt_ninja.auth_classes import AuthedRequest
 
+router = Router()
 
-@router.get("/my_protected_endpoint/" auth=JWTAuth())
+@router.get("/my_protected_endpoint/", auth=JWTAuth())
 def my_protected_route(request: AuthedRequest):
     request.auth.session.data["foo"] = 123
     request.auth.session.save()  # Explicitly save the info for the user's session
