@@ -31,7 +31,7 @@ exclude = [
     "static_files",
 ]
 line-length = 120
-target-version = "py313"
+target-version = "py312"
 select = [
   "E",    # pycodestyle
   "W",    # pycodestyle
@@ -40,11 +40,13 @@ select = [
   "C4",   # flake8-comprehensions
   "TID",  # flake8-tidy-imports
 ]
+ignore = [
+    "TID252",  # Prefer absolute imports over relative imports from parent modules
+]
 
 [project.urls]
 Homepage = "https://github.com/dvf/jwt-ninja"
 
 [tool.isort]
 profile = "black"
-line_length = 120
 filter_files = true
