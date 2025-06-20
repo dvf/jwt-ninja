@@ -1,11 +1,7 @@
 from datetime import datetime
-
-
 from typing import Generic, Literal, TypeVar
 
 from ninja import Schema
-
-
 from pydantic import BaseModel, Field
 
 
