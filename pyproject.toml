@@ -1,6 +1,6 @@
 [project]
 name = "jwtninja"
-version = "0.1.7"
+version = "0.1.8"
 description = "A simple and fully-typed auth library for Django Ninja based on PyJWT."
 readme = "README.md"
 requires-python = ">=3.12"
