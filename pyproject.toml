@@ -1,6 +1,6 @@
 [project]
 name = "jwtninja"
-version = "0.1.5"
+version = "0.1.6"
 description = "A simple and fully-typed auth library for Django Ninja based on PyJWT."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -30,6 +30,21 @@ exclude = [
     "migrations",
     "static_files",
 ]
+line-length = 120
+target-version = "py313"
+select = [
+  "E",    # pycodestyle
+  "W",    # pycodestyle
+  "F",    # pyflakes
+  "I",    # isort
+  "C4",   # flake8-comprehensions
+  "TID",  # flake8-tidy-imports
+]
 
 [project.urls]
 Homepage = "https://github.com/dvf/jwt-ninja"
+
+[tool.isort]
+profile = "black"
+line_length = 120
+filter_files = true

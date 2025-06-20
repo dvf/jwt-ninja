@@ -28,17 +28,13 @@ def test_login_success_happy(ninja_client, test_user):
     assert "refresh_token" in json_response
 
     # Check the contents of the JWT payload
-    dec_access_token = json.loads(
-        base64.b64decode(json_response["access_token"].split(".")[1] + "===").decode()
-    )
+    dec_access_token = json.loads(base64.b64decode(json_response["access_token"].split(".")[1] + "===").decode())
     assert dec_access_token["user_id"] == test_user.id
     assert dec_access_token["type"] == "access"
     assert dec_access_token["session_id"]
     assert dec_access_token["exp"]
 
-    dec_refresh_token = json.loads(
-        base64.b64decode(json_response["refresh_token"].split(".")[1] + "===").decode()
-    )
+    dec_refresh_token = json.loads(base64.b64decode(json_response["refresh_token"].split(".")[1] + "===").decode())
     assert dec_refresh_token["user_id"] == test_user.id
     assert dec_refresh_token["type"] == "refresh"
     assert dec_refresh_token["session_id"] == dec_access_token["session_id"]
@@ -75,9 +71,7 @@ def test_refresh_token_success(ninja_client, refresh_token, test_user):
     json_response = res.json()
     assert "access_token" in json_response
 
-    dec_access_token = json.loads(
-        base64.b64decode(json_response["access_token"].split(".")[1] + "===").decode()
-    )
+    dec_access_token = json.loads(base64.b64decode(json_response["access_token"].split(".")[1] + "===").decode())
     assert dec_access_token["user_id"] == test_user.id
     assert dec_access_token["type"] == "access"
     assert dec_access_token["exp"]
