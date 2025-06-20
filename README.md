@@ -28,12 +28,18 @@ INSTALLED_APPS = [
 
 Import the router and register it to your Ninja API:
 ```python
+from ninja import NinjaAPI
 from jwt_ninja.api import router as auth_router
+from jwt_ninja.errors import APIError as AuthAPIError
+from jwt_ninja.handlers import error_handler
 
 
 api = NinjaAPI()
 
 api.add_router("auth/", auth_router)
+
+# Add Auth Exception Handler to explicitly handle error
+api.add_exception_handler(AuthAPIError, error_handler)
 ```
 
 This will register the following endpoints:
