@@ -8,7 +8,7 @@
 [![CI Status](https://github.com/dvf/jwt-ninja/actions/workflows/check-and-test.yml/badge.svg)](https://github.com/dvf/jwt-ninja/actions/workflows/check-and-test.yml)
 [![License](https://img.shields.io/github/license/dvf/jwt-ninja)](LICENSE)
 
-> **❤️ Contributions Wanted!**
+> **❤️ Contributions Welcome!**
 > Whether you’re fixing a bug, or want a new feature, feel free to submit a PR.
 
 ---
@@ -52,6 +52,8 @@ from jwt_ninja.handlers import error_handler
 
 api = NinjaAPI()
 api.add_router("auth/", auth_router)
+
+# Explicit control over how you went errors to be returned
 api.add_exception_handler(AuthAPIError, error_handler)
 ```
 
