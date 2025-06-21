@@ -54,13 +54,11 @@ profile = "black"
 filter_files = true
 
 [build-system]
-requires = [
-  "setuptools>=69",
-  "setuptools_scm[toml]>=8.0",
-  "wheel"
-]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling", "uv-dynamic-versioning"]
+build-backend = "hatchling.build"
 
-[tool.setuptools_scm]
-version_scheme = "post-release"
-local_scheme   = "no-local-version"
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
+[tool.uv-dynamic-versioning]
+fallback-version = "0.0.0"
