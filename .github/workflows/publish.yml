@@ -2,9 +2,8 @@ name: Publish to PyPI
 on:
   release:
     types: [ published ]
-    
-jobs:
 
+jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
@@ -20,11 +19,12 @@ jobs:
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+        working-directory: ${{ github.workspace }}
 
-      # Install necessary utilities (curl, jq and git)
+      # Install necessary utilities (curl, jq, and git)
       - name: Install curl jq git
         run: |
-          apt-get update && apt-get install -y curl jq git
+          sudo apt-get update && sudo apt-get install -y curl jq git
 
       # Get version and release notes from Release Drafter
       - name: Extract version and release notes
@@ -37,11 +37,13 @@ jobs:
           echo "NOTES<<EOF" >> $GITHUB_OUTPUT
           echo "$NOTES" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
+        working-directory: ${{ github.workspace }}
 
       # Update pyproject.toml with version
       - name: Update pyproject.toml version
         run: |
           sed -i "s/version = \".*\"/version = \"${{ steps.release.outputs.VERSION }}\"/" pyproject.toml
+        working-directory: ${{ github.workspace }}
 
       # Commit changes
       - name: Commit version and changelog
@@ -51,11 +53,14 @@ jobs:
           git add pyproject.toml
           git commit -m "chore: update version to ${{ steps.release.outputs.VERSION }} and changelog"
           git push
+        working-directory: ${{ github.workspace }}
 
       - name: Build package
         run: uv build
+        working-directory: ${{ github.workspace }}
 
       - name: Publish to PyPI
         env:
           UV_PUBLISH_TOKEN: ${{ secrets.UV_PUBLISH_TOKEN }}
-        run: uv publish dist/*-${VERSION}* --token $UV_PUBLISH_TOKEN
+        run: uv publish dist/*-${{ steps.release.outputs.VERSION }}* --token $UV_PUBLISH_TOKEN
+        working-directory: ${{ github.workspace }}
