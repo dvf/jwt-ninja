@@ -2,7 +2,7 @@ name: Publish to PyPI (uv)
 
 on:
   release:
-    types: [published]            # fires when you hit “Publish”
+    types: [published]            
 
 jobs:
   build-and-publish:
@@ -13,7 +13,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with: {fetch-depth: 0}    # tags are required for setuptools-scm
+        with: {fetch-depth: 0}    
 
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
@@ -27,12 +27,12 @@ jobs:
       # Build sdist & wheels – version is resolved automatically
       # --------------------------------------------------------------
       - name: Build distributions
-        run: uv build -o dist/            # or: python -m build -o dist/
+        run: uv build -o dist/            
 
       # --------------------------------------------------------------
       # Publish to PyPI with trusted publishing (OIDC)
       # --------------------------------------------------------------
       - name: Publish
-        run: uv publish dist/*            # non-interactive in CI
+        run: uv publish dist/*            
         env:
-          UV_PUBLISH_NON_INTERACTIVE: "1" # suppress TTY prompts
+          UV_PUBLISH_NON_INTERACTIVE: "1" 
