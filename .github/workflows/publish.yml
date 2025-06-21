@@ -6,20 +6,23 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
-    permissions:
-      contents: write
-    steps:
-      # Install necessary utilities (curl, jq and git)
-      - name: Install curl jq git
-        run: |
-          apt-get update && apt-get install -y curl jq git:
 
+    steps:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      # Install uv
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      # Install necessary utilities (curl, jq and git)
+      - name: Install curl jq git
+        run: |
+          apt-get update && apt-get install -y curl jq git
 
       # Get version and release notes from Release Drafter
       - name: Extract version and release notes
@@ -38,18 +41,14 @@ jobs:
         run: |
           sed -i "s/version = \".*\"/version = \"${{ steps.release.outputs.VERSION }}\"/" pyproject.toml
 
+      # Commit changes
       - name: Commit version and changelog
         run: |
-          echo "Current directory: $(pwd)"
-          ls -la
-          git --version
-          git status
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add pyproject.toml
           git commit -m "chore: update version to ${{ steps.release.outputs.VERSION }} and changelog"
           git push
-        working-directory: ${{ github.workspace }}
 
       - name: Build package
         run: uv build
