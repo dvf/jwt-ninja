@@ -64,4 +64,6 @@ source = "uv-dynamic-versioning"
 packages = ["jwt_ninja"]
 
 [tool.uv-dynamic-versioning]
+vcs = "git"
 fallback-version = "0.0.0"
+format-jinja = "{{ major }}.{{ minor }}.{{ patch }}"
