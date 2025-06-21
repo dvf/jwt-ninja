@@ -16,6 +16,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Install necessary utilities (curl and jq)
+      - name: Install curl and jq
+        run: |
+          apt-get update && apt-get install -y curl jq
+
       # Get version and release notes from Release Drafter
       - name: Extract version and release notes
         id: release
