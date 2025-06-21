@@ -79,8 +79,7 @@ wheels = [
 
 [[package]]
 name = "jwtninja"
-version = "0.1.5"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "django-ninja" },
     { name = "pydantic" },

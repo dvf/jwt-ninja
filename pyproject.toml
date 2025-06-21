@@ -1,6 +1,6 @@
 [project]
 name = "jwtninja"
-version = "0.1.8"
+dynamic = ["version"]
 description = "A simple and fully-typed auth library for Django Ninja based on PyJWT."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -52,3 +52,13 @@ Homepage = "https://github.com/dvf/jwt-ninja"
 [tool.isort]
 profile = "black"
 filter_files = true
+
+[build-system]
+requires = ["hatchling", "uv-dynamic-versioning"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
+[tool.uv-dynamic-versioning]
+fallback-version = "0.0.0"
