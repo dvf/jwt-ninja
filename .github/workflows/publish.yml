@@ -1,61 +1,38 @@
-name: Publish to PyPI
+name: Publish to PyPI (uv)
+
 on:
   release:
-    types: [ published ]
-    
-jobs:
+    types: [published]            # fires when you hit “Publish”
 
-  publish:
+jobs:
+  build-and-publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      id-token: write             # OIDC → PyPI (token-free)
+      contents: read
 
-      # Install uv
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}    # tags are required for setuptools-scm
+
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+
       - name: Install uv
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
-      # Install necessary utilities (curl, jq and git)
-      - name: Install curl jq git
-        run: |
-          apt-get update && apt-get install -y curl jq git
+      # --------------------------------------------------------------
+      # Build sdist & wheels – version is resolved automatically
+      # --------------------------------------------------------------
+      - name: Build distributions
+        run: uv build -o dist/            # or: python -m build -o dist/
 
-      # Get version and release notes from Release Drafter
-      - name: Extract version and release notes
-        id: release
-        run: |
-          VERSION=$(echo ${{ github.event.release.tag_name }} | sed 's/^v//')
-          NOTES=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            ${{ github.event.release.url }} | jq -r '.body')
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          echo "NOTES<<EOF" >> $GITHUB_OUTPUT
-          echo "$NOTES" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      # Update pyproject.toml with version
-      - name: Update pyproject.toml version
-        run: |
-          sed -i "s/version = \".*\"/version = \"${{ steps.release.outputs.VERSION }}\"/" pyproject.toml
-
-      # Commit changes
-      - name: Commit version and changelog
-        run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git add pyproject.toml
-          git commit -m "chore: update version to ${{ steps.release.outputs.VERSION }} and changelog"
-          git push
-
-      - name: Build package
-        run: uv build
-
-      - name: Publish to PyPI
+      # --------------------------------------------------------------
+      # Publish to PyPI with trusted publishing (OIDC)
+      # --------------------------------------------------------------
+      - name: Publish
+        run: uv publish dist/*            # non-interactive in CI
         env:
-          UV_PUBLISH_TOKEN: ${{ secrets.UV_PUBLISH_TOKEN }}
-        run: uv publish dist/*-${VERSION}* --token $UV_PUBLISH_TOKEN
+          UV_PUBLISH_NON_INTERACTIVE: "1" # suppress TTY prompts

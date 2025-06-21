@@ -1,6 +1,6 @@
 [project]
 name = "jwtninja"
-version = "0.1.8"
+dynamic = ["version"]
 description = "A simple and fully-typed auth library for Django Ninja based on PyJWT."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -52,3 +52,15 @@ Homepage = "https://github.com/dvf/jwt-ninja"
 [tool.isort]
 profile = "black"
 filter_files = true
+
+[build-system]
+requires = [
+  "setuptools>=69",
+  "setuptools_scm[toml]>=8.0",
+  "wheel"
+]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+version_scheme = "post-release"
+local_scheme   = "no-local-version"
