@@ -38,20 +38,12 @@ jobs:
         run: |
           sed -i "s/version = \".*\"/version = \"${{ steps.release.outputs.VERSION }}\"/" pyproject.toml
 
-      # Update CHANGELOG.md
-      - name: Update CHANGELOG.md
-        run: |
-          VERSION=${{ steps.release.outputs.VERSION }}
-          DATE=$(date +%Y-%m-%d)
-          NOTES=${{ steps.release.outputs.NOTES }}
-          echo -e "## [$VERSION] - $DATE\n\n$NOTES\n\n$(cat CHANGELOG.md)" > CHANGELOG.md
-
       # Commit changes
       - name: Commit version and changelog
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git add pyproject.toml CHANGELOG.md
+          git add pyproject.toml
           git commit -m "chore: update version to ${{ steps.release.outputs.VERSION }} and changelog"
           git push
 
