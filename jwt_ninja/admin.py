@@ -24,3 +24,5 @@ class SessionAdmin(admin.ModelAdmin):
     ]
     list_filter = ["created_at", "expired_at"]
     ordering = ["-id"]
+    list_select_related = ["user"]
+    show_full_result_count = False

@@ -100,6 +100,7 @@ JWT_PAYLOAD_CLASS = "jwt_ninja.types.JWTPayload"
 
 ### Custom Claims
 
+If you'd like to have additional data in the JWT payload, then you must subclass JWTPayload as below. 
 ```python
 from jwt_ninja.types import JWTPayload
 
