@@ -9,8 +9,7 @@
 [![License](https://img.shields.io/github/license/dvf/jwt-ninja)](LICENSE)
 
 > **❤️ Contributions Welcome!**
-> Whether you’re fixing a bug, or want a new feature, feel free to submit a PR.
-
+> Feel free to submit a PR.
 ---
 
 ## 🚀 Quick Start
@@ -85,24 +84,25 @@ def my_protected_route(request: AuthedRequest):
 
 ---
 
-## ⚙️Settings
+## ⚙️ Default Settings
 
-```text
-# settings.py defaults
-JWT_SECRET_KEY = SECRET_KEY
+```python
+# settings.py
+JWT_SECRET_KEY = SECRET_KEY  # Django's Secret Key
 JWT_ALGORITHM = "HS256"
-JWT_ACCESS_TOKEN_EXPIRE_SECONDS = 300        # 5 minutes
-JWT_REFRESH_TOKEN_EXPIRE_SECONDS = 365 * 3600  # 1 year
-JWT_SESSION_EXPIRE_SECONDS = 365 * 3600       # 1 year
+JWT_ACCESS_TOKEN_EXPIRE_SECONDS = 300          # 5 minutes
+JWT_REFRESH_TOKEN_EXPIRE_SECONDS = 365 * 3600  # 1 year
+JWT_SESSION_EXPIRE_SECONDS = 365 * 3600        # 1 year
 JWT_USER_LOGIN_AUTHENTICATOR = "jwt_ninja.authenticators.django_user_authenticator"
 JWT_PAYLOAD_CLASS = "jwt_ninja.types.JWTPayload"
 ```
 
 ### Custom Claims
 
-If you'd like to have additional data in the JWT payload, then you must subclass JWTPayload as below. 
+If want additional data in the JWT payload, then you must subclass JWTPayload as below. 
 ```python
 from jwt_ninja.types import JWTPayload
+
 
 class CustomJWTPayload(JWTPayload):
     discord_user_id: str
@@ -110,7 +110,7 @@ class CustomJWTPayload(JWTPayload):
     email: str
 ```
 
-Configure it:
+And then configure it:
 
 ```python
 JWT_PAYLOAD_CLASS = "path.to.CustomJWTPayload"
