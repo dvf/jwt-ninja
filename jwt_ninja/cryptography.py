@@ -1,5 +1,3 @@
-from typing import Type
-
 import jwt
 from pydantic import ValidationError
 
@@ -25,13 +23,13 @@ def generate_jwt(payload: JWTPayload) -> str:
     )
 
 
-def decode_jwt(token: str, payload_class: Type[JWTPayload]) -> JWTPayload:
+def decode_jwt(token: str, payload_class: type[JWTPayload]) -> JWTPayload:
     """
     Decodes a JSON Web Token (JWT) and returns the payload.
 
     Args:
         token (str): The encoded JWT as a string.
-        payload_class (Type[JWTPayload]): The class to deserialize the payload into.
+        payload_class (type[JWTPayload]): The class to deserialize the payload into.
 
     Returns:
         JWTPayload: The deserialized payload.
