@@ -1,3 +1,5 @@
+import warnings
+
 from django.conf import settings
 from django.core.signals import setting_changed
 from django.utils.module_loading import import_string
@@ -5,6 +7,41 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .types import JWTPayload
+
+
+class InsecureJWTKeyWarning(UserWarning):
+    """
+    Emitted when the configured JWT signing key is shorter than the HMAC
+    algorithm's recommended minimum per RFC 7518 §3.2. Short keys weaken
+    HMAC security; PyJWT also emits its own InsecureKeyLengthWarning at
+    encode/decode time.
+    """
+
+
+# RFC 7518 §3.2: HMAC keys should be at least the hash output size.
+_HMAC_MIN_KEY_BYTES = {
+    "HS256": 32,
+    "HS384": 48,
+    "HS512": 64,
+}
+
+
+def _warn_if_key_too_short(secret_key: str, algorithm: str) -> None:
+    minimum = _HMAC_MIN_KEY_BYTES.get(algorithm)
+    if minimum is None:
+        return
+    key_bytes = len(secret_key.encode("utf-8"))
+    if key_bytes >= minimum:
+        return
+    warnings.warn(
+        f"JWT signing key is {key_bytes} bytes, but {algorithm} requires at least "
+        f"{minimum} bytes per RFC 7518 §3.2. Set JWT_SECRET_KEY (or rotate Django's "
+        f"SECRET_KEY) to a random value with at least {minimum} bytes of entropy. "
+        f"Short HMAC keys reduce the security margin of your tokens — an attacker "
+        f"who recovers the key can forge arbitrary tokens.",
+        InsecureJWTKeyWarning,
+        stacklevel=3,
+    )
 
 
 class JWTSettings(BaseSettings):
@@ -34,6 +71,7 @@ class JWTSettings(BaseSettings):
                 django_overrides[field_name] = getattr(settings, django_key)
         super().__init__(**django_overrides)
         self._JWT_PAYLOAD_CLASS = import_string(self.JWT_PAYLOAD_CLASS)
+        _warn_if_key_too_short(self.SECRET_KEY, self.ALGORITHM)
 
     @property
     def payload_class(self) -> type[JWTPayload]:

@@ -180,13 +180,35 @@ JWT_PAYLOAD_CLASS = "jwt_ninja.types.JWTPayload"
 
 | Setting                              | Type  | Description                                                                                   |
 | ------------------------------------ | ----- | --------------------------------------------------------------------------------------------- |
-| `JWT_SECRET_KEY`                     | `str` | Signing key. Defaults to Django's `SECRET_KEY`.                                               |
+| `JWT_SECRET_KEY`                     | `str` | Signing key. Defaults to Django's `SECRET_KEY`. See [Signing key length](#signing-key-length). |
 | `JWT_ALGORITHM`                      | `str` | PyJWT algorithm. Symmetric (`HS*`) or asymmetric (`RS*`, `ES*`, …).                          |
 | `JWT_ACCESS_TOKEN_EXPIRE_SECONDS`    | `int` | Lifetime of the short-lived access token.                                                    |
 | `JWT_REFRESH_TOKEN_EXPIRE_SECONDS`   | `int` | Lifetime of the refresh token.                                                               |
 | `JWT_SESSION_EXPIRE_SECONDS`         | `int` | Max age of the DB `Session` row before it's considered expired by housekeeping.              |
 | `JWT_USER_LOGIN_AUTHENTICATOR`       | `str` | Dotted path to a callable `(request, payload) -> User \| None` used by `/auth/login/`.       |
 | `JWT_PAYLOAD_CLASS`                  | `str` | Dotted path to a `JWTPayload` subclass if you need custom claims.                            |
+
+### Signing key length
+
+For HMAC algorithms (the `HS*` family, including the default `HS256`), [RFC 7518 §3.2](https://www.rfc-editor.org/rfc/rfc7518#section-3.2) requires the signing key to be at least the size of the hash output:
+
+| Algorithm | Minimum key size |
+| --------- | ---------------- |
+| `HS256`   | 32 bytes         |
+| `HS384`   | 48 bytes         |
+| `HS512`   | 64 bytes         |
+
+Shorter keys are padded internally and give attackers a smaller space to search — an attacker who recovers the key can forge arbitrary tokens for any user.
+
+**JWT Ninja emits `jwt_ninja.settings.InsecureJWTKeyWarning` at startup if your configured key is too short**, so you'll see it in your app logs as soon as the settings load. PyJWT also emits its own `InsecureKeyLengthWarning` at encode/decode time.
+
+Django's `get_random_secret_key()` already produces 50-character keys, so fresh projects are fine. Short keys typically show up in older projects or in manually-set `JWT_SECRET_KEY` values. To generate a suitable key:
+
+```bash
+python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+```
+
+Rotating the key invalidates all existing JWT Ninja sessions (existing tokens fail signature verification), so users will need to re-authenticate after deploying the change.
 
 ## Custom Claims
 
