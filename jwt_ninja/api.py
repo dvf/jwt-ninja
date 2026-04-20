@@ -128,7 +128,7 @@ def new_refresh_token(request: HttpRequest, payload: RefreshTokenSchema) -> Any:
     auth=JWTAuth(),
 )
 def list_active_sessions(request: AuthedRequest):
-    return request.auth.user.jwt_sessions.filter(expired_at__isnull=True)
+    return Session.objects.filter(user=request.auth.user, expired_at__isnull=True)
 
 
 @router.post(

@@ -89,7 +89,7 @@ class Session(models.Model):
         ).delete()
 
     @classmethod
-    def create_session(cls, user, ip_address: str) -> "Session":
+    def create_session(cls, user, ip_address: str | None) -> "Session":
         """
         Create a new session from a request.
         """
