@@ -1,4 +1,4 @@
-from functools import cached_property, partial
+from functools import partial
 from secrets import token_urlsafe
 
 from django.contrib.auth import get_user_model
@@ -54,9 +54,9 @@ class Session(models.Model):
         encoder=DjangoJSONEncoder,
     )
 
-    @cached_property
-    def is_expired(self):
-        return self.expired_at and self.expired_at < timezone.now()
+    @property
+    def is_expired(self) -> bool:
+        return self.expired_at is not None and self.expired_at < timezone.now()
 
     def invalidate_session(self):
         """
