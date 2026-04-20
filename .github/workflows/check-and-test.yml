@@ -49,3 +49,20 @@ jobs:
 
       - name: "pytest: Run tests"
         run: .venv/bin/pytest .
+
+  check-types:
+    name: Check Types (pyrefly)
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install Dependencies
+        run: uv sync --frozen --no-install-project
+
+      - name: "pyrefly: Check types"
+        run: .venv/bin/pyrefly check

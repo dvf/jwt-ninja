@@ -18,6 +18,8 @@ dev-dependencies = [
     "pytest-mock>=3.14.0",
     "pytest>=8.3.3",
     "ruff>=0.6.9",
+    "pyrefly>=0.20.0",
+    "django-stubs>=5.0.0",
 ]
 
 [tool.ruff]
@@ -67,3 +69,8 @@ vcs = "git"
 fallback-version = "0.0.0"
 style = "semver"
 strict = true
+
+[tool.pyrefly]
+project-includes = ["jwt_ninja"]
+project-excludes = ["jwt_ninja/migrations", "jwt_ninja/tests"]
+python-version = "3.12"
