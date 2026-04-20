@@ -13,7 +13,7 @@ from .errors import (
     JWTInvalidTokenError,
 )
 from .models import Session
-from .types import JWTPayload
+from .settings import jwt_settings
 
 User = get_user_model()
 
@@ -32,7 +32,7 @@ class AuthedRequest(HttpRequest):
 class JWTAuth(HttpBearer):
     def authenticate(self, request: HttpRequest, token: str) -> AuthDetails | None:
         try:
-            payload = decode_jwt(token, JWTPayload)
+            payload = decode_jwt(token, jwt_settings.payload_class)
         except JWTExpiredError:
             raise APIError("expired_token", 401)
         except (JWTInvalidPayloadFormat, JWTInvalidTokenError):

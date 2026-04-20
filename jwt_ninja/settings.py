@@ -4,6 +4,8 @@ from django.utils.module_loading import import_string
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from .types import JWTPayload
+
 
 class JWTSettings(BaseSettings):
     SECRET_KEY: str = Field(settings.SECRET_KEY)
@@ -19,10 +21,15 @@ class JWTSettings(BaseSettings):
         case_sensitive=True,
     )
 
+    _JWT_PAYLOAD_CLASS: type[JWTPayload]
+
     def __init__(self):
         super().__init__()
-        self._USER_LOGIN_AUTHENTICATOR = import_string(self.USER_LOGIN_AUTHENTICATOR)
         self._JWT_PAYLOAD_CLASS = import_string(self.JWT_PAYLOAD_CLASS)
+
+    @property
+    def payload_class(self) -> type[JWTPayload]:
+        return self._JWT_PAYLOAD_CLASS
 
 
 jwt_settings = JWTSettings()
