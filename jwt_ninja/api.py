@@ -1,6 +1,7 @@
 import time
-from typing import Any, Literal
+from typing import Literal
 
+from django.db.models import QuerySet
 from django.http import HttpRequest
 from django.utils import timezone
 from django.utils.module_loading import import_string
@@ -82,7 +83,7 @@ def login(request: HttpRequest, payload: LoginSchema) -> TokenSchema:
         400: ErrorResponseType[Literal["invalid_token_type"]],
         401: ErrorResponseType[
             Literal[
-                "token_expired",
+                "expired_token",
                 "invalid_token",
                 "invalid_user",
             ]
@@ -90,7 +91,7 @@ def login(request: HttpRequest, payload: LoginSchema) -> TokenSchema:
     },
     auth=None,
 )
-def new_refresh_token(request: HttpRequest, payload: RefreshTokenSchema) -> Any:
+def new_refresh_token(request: HttpRequest, payload: RefreshTokenSchema) -> AccessTokenSchema:
     try:
         refresh_payload = decode_jwt(payload.refresh_token, jwt_settings.payload_class)
     except JWTExpiredError:
@@ -113,10 +114,7 @@ def new_refresh_token(request: HttpRequest, payload: RefreshTokenSchema) -> Any:
         type="access",
         session_id=refresh_payload.session_id,
     )
-    try:
-        access_token = generate_jwt(access_payload)
-    except (JWTExpiredError, JWTInvalidTokenError, JWTInvalidPayloadFormat):
-        raise APIError("invalid_token", http_status_code=401)
+    access_token = generate_jwt(access_payload)
 
     return AccessTokenSchema(access_token=access_token)
 
@@ -127,7 +125,7 @@ def new_refresh_token(request: HttpRequest, payload: RefreshTokenSchema) -> Any:
     response={200: list[SessionResponse]},
     auth=JWTAuth(),
 )
-def list_active_sessions(request: AuthedRequest):
+def list_active_sessions(request: AuthedRequest) -> QuerySet[Session]:
     return Session.objects.filter(user=request.auth.user, expired_at__isnull=True)
 
 
@@ -138,7 +136,7 @@ def list_active_sessions(request: AuthedRequest):
     response={200: None},
     auth=JWTAuth(),
 )
-def logout(request: AuthedRequest):
+def logout(request: AuthedRequest) -> None:
     request.auth.session.expired_at = timezone.now()
     request.auth.session.save()
     return None
@@ -151,7 +149,7 @@ def logout(request: AuthedRequest):
     response={200: None},
     auth=JWTAuth(),
 )
-def logout_all(request: AuthedRequest):
+def logout_all(request: AuthedRequest) -> None:
     # Sign out all active sessions
     Session.objects.filter(
         user_id=request.auth.user.id,
