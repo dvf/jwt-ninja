@@ -1,4 +1,6 @@
-![JWT Ninja Logo](https://github.com/user-attachments/assets/2589db23-94c7-47c6-8687-eb29c6312272) <br/>
+<img width="400" height="177" alt="JWT Ninja Logo" src="https://github.com/user-attachments/assets/b502f660-027c-4516-b265-4136b2b1b7e7" />
+
+<br/>
 
 # JWT Ninja
 
