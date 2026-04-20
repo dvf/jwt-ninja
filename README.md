@@ -1,8 +1,10 @@
-<img width="400" height="177" alt="JWT Ninja Logo" src="https://github.com/user-attachments/assets/b502f660-027c-4516-b265-4136b2b1b7e7" />
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/048de9e1-9141-4717-9b3e-63f828e5512f" />
+  <source media="(prefers-color-scheme: light)" srcset="https://github.com/user-attachments/assets/fe969f21-3986-4bd4-b75c-96e4e8bdf1c8" />
+  <img alt="Fallback image description" src="https://github.com/user-attachments/assets/fe969f21-3986-4bd4-b75c-96e4e8bdf1c8">
+</picture>
 
 <br/>
-
-# JWT Ninja
 
 *A session‑backed, fully‑typed authentication library for **[Django Ninja](https://django-ninja.dev/)**, powered by **[PyJWT](https://pyjwt.readthedocs.io/)**.*
 
