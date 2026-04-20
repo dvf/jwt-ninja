@@ -20,7 +20,6 @@ from .settings import jwt_settings
 from .types import (
     AccessTokenSchema,
     ErrorResponseType,
-    JWTPayload,
     LoginSchema,
     RefreshTokenSchema,
     SessionResponse,
@@ -53,7 +52,7 @@ def login(request: HttpRequest, payload: LoginSchema) -> TokenSchema:
     )
 
     current_timestamp = int(time.time())
-    access_payload = JWTPayload(
+    access_payload = jwt_settings.payload_class(
         user_id=user.id,
         type="access",
         # RFC 7519 says that the exp must be a NumericDate
@@ -63,7 +62,7 @@ def login(request: HttpRequest, payload: LoginSchema) -> TokenSchema:
     )
     access_token = generate_jwt(access_payload)
 
-    refresh_payload = JWTPayload(
+    refresh_payload = jwt_settings.payload_class(
         user_id=user.id,
         exp=current_timestamp + jwt_settings.REFRESH_TOKEN_EXPIRE_SECONDS,
         type="refresh",
@@ -93,7 +92,7 @@ def login(request: HttpRequest, payload: LoginSchema) -> TokenSchema:
 )
 def new_refresh_token(request: HttpRequest, payload: RefreshTokenSchema) -> Any:
     try:
-        refresh_payload = decode_jwt(payload.refresh_token, JWTPayload)
+        refresh_payload = decode_jwt(payload.refresh_token, jwt_settings.payload_class)
     except JWTExpiredError:
         raise APIError("expired_token", http_status_code=401)
     except (JWTInvalidTokenError, JWTInvalidPayloadFormat):
@@ -108,7 +107,7 @@ def new_refresh_token(request: HttpRequest, payload: RefreshTokenSchema) -> Any:
         raise APIError("invalid_user", http_status_code=401)
 
     current_timestamp = int(time.time())
-    access_payload = JWTPayload(
+    access_payload = jwt_settings.payload_class(
         user_id=user.id,
         exp=current_timestamp + jwt_settings.ACCESS_TOKEN_EXPIRE_SECONDS,
         type="access",
