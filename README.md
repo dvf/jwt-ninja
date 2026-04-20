@@ -209,6 +209,25 @@ JWT_PAYLOAD_CLASS = "myapp.auth.CustomJWTPayload"
 
 > **Note:** If you add required fields, you'll also need a custom authenticator (below) or a custom login endpoint that knows how to populate them.
 
+### Overriding `user_id`
+
+If your User model uses a non-integer primary key (`UUIDField`, `CharField`, etc.), override `user_id` on your payload subclass so the declared type matches what `user.id` actually is at runtime:
+
+```python
+from uuid import UUID
+from jwt_ninja import JWTPayload
+
+
+class UUIDJWTPayload(JWTPayload):
+    user_id: UUID  # or str, depending on your User PK
+
+
+class StrPKJWTPayload(JWTPayload):
+    user_id: str
+```
+
+Pydantic is strict about this: `user_id=user.id` at the login site passes the PK through without coercion, so the declared type and the runtime type must agree. The default `JWTPayload` declares `user_id: int`, which matches Django's default `AutoField` primary key.
+
 ## Custom Authenticator
 
 If you don't use Django's `username`/`password` flow (SSO, magic links, OTP, etc.), point `JWT_USER_LOGIN_AUTHENTICATOR` at a callable that returns a `User` or `None`:
