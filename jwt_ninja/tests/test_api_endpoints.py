@@ -4,11 +4,14 @@ import time
 from datetime import timedelta
 
 import pytest
+from django.contrib.auth import get_user_model
 from django.utils import timezone
 
 from ..cryptography import generate_jwt
 from ..models import Session
 from ..types import JWTPayload
+
+User = get_user_model()
 
 
 @pytest.mark.django_db
@@ -227,3 +230,95 @@ def test_logout_all(ninja_client, access_token, test_user, user_session):
 
     assert user_session.expired_at is not None
     assert other_session.expired_at is not None
+
+
+@pytest.mark.django_db
+def test_refresh_token_with_access_token_type(ninja_client, access_token):
+    response = ninja_client.post(
+        "/auth/refresh/",
+        json={
+            "refresh_token": access_token,
+        },
+    )
+
+    assert response.status_code == 400
+    json_response = response.json()
+    assert json_response["error_code"] == "invalid_token_type"
+
+
+@pytest.mark.django_db
+def test_refresh_token_inactive_user(ninja_client, refresh_token, test_user):
+    test_user.is_active = False
+    test_user.save()
+
+    response = ninja_client.post(
+        "/auth/refresh/",
+        json={
+            "refresh_token": refresh_token,
+        },
+    )
+
+    assert response.status_code == 401
+    json_response = response.json()
+    assert json_response["error_code"] == "invalid_user"
+
+
+@pytest.mark.django_db
+def test_refresh_token_deleted_user(ninja_client, refresh_token, test_user):
+    test_user.delete()
+
+    response = ninja_client.post(
+        "/auth/refresh/",
+        json={
+            "refresh_token": refresh_token,
+        },
+    )
+
+    assert response.status_code == 401
+    json_response = response.json()
+    assert json_response["error_code"] == "invalid_user"
+
+
+@pytest.mark.django_db
+def test_list_sessions_returns_only_active_sessions_for_current_user(
+    ninja_client, access_token, test_user, user_session
+):
+    expired_session = Session.create_session(user=test_user, ip_address="192.168.1.50")
+    expired_session.expired_at = timezone.now() - timedelta(seconds=1)
+    expired_session.save()
+
+    other_user = User.objects.create_user(
+        email="other@example.com",
+        username="other",
+        password="other",
+    )
+    Session.create_session(user=other_user, ip_address="192.168.1.51")
+
+    response = ninja_client.get(
+        "/auth/sessions/",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+        },
+    )
+
+    assert response.status_code == 200
+    json_response = response.json()
+    assert len(json_response) == 1
+    assert json_response[0]["id"] == user_session.id
+
+
+@pytest.mark.django_db
+def test_protected_endpoint_inactive_user(ninja_client, access_token, test_user):
+    test_user.is_active = False
+    test_user.save()
+
+    response = ninja_client.get(
+        "/auth/protected/",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+        },
+    )
+
+    assert response.status_code == 401
+    json_response = response.json()
+    assert json_response["error_code"] == "invalid_user"
