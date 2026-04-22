@@ -10,5 +10,30 @@ wheels/
 .venv
 .idea
 
+# IDE and editor files
+.vscode/
+.vs/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+
+# Agent and AI tool directories
+.agents/
+.pi/
+.claude/
+.aider/
+.cursor/
+skills-lock
+
+# Pyrefly cache
+.pyrefly/
+
 # Stale versioning leftover
 src/
+/skills-lock.json

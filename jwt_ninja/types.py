@@ -21,11 +21,11 @@ class LoginSchema(BaseModel):
 
 class TokenSchema(BaseModel):
     access_token: str
-    refresh_token: str
+    refresh_token: str | None = None
 
 
 class RefreshTokenSchema(BaseModel):
-    refresh_token: str
+    refresh_token: str | None = None
 
 
 class AccessTokenSchema(BaseModel):

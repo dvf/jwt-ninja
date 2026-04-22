@@ -1,8 +1,8 @@
 import jwt
 from pydantic import ValidationError
 
+from . import settings as jwt_settings_module
 from .errors import JWTExpiredError, JWTInvalidPayloadFormat, JWTInvalidTokenError
-from .settings import jwt_settings
 from .types import JWTPayload
 
 
@@ -18,8 +18,8 @@ def generate_jwt(payload: JWTPayload) -> str:
     """
     return jwt.encode(
         payload=payload.model_dump(mode="json"),
-        key=jwt_settings.SECRET_KEY,
-        algorithm=jwt_settings.ALGORITHM,
+        key=jwt_settings_module.jwt_settings.SECRET_KEY,
+        algorithm=jwt_settings_module.jwt_settings.ALGORITHM,
     )
 
 
@@ -42,8 +42,8 @@ def decode_jwt(token: str, payload_class: type[JWTPayload]) -> JWTPayload:
     try:
         payload = jwt.decode(
             jwt=token,
-            key=jwt_settings.SECRET_KEY,
-            algorithms=[jwt_settings.ALGORITHM],
+            key=jwt_settings_module.jwt_settings.SECRET_KEY,
+            algorithms=[jwt_settings_module.jwt_settings.ALGORITHM],
         )
 
     except jwt.ExpiredSignatureError as err:

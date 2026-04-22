@@ -4,20 +4,51 @@ dynamic = ["version"]
 description = "A simple and fully-typed auth library for Django Ninja based on PyJWT."
 readme = "README.md"
 requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [
+    { name = "DVF", email = "dvf@dvf.com" },
+]
+keywords = [
+    "django",
+    "ninja",
+    "jwt",
+    "authentication",
+    "auth",
+    "token",
+    "json-web-token",
+    "security",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Framework :: Django",
+    "Framework :: Django :: 5.0",
+    "Framework :: Django :: 5.1",
+    "Framework :: Django :: 5.2",
+    "Framework :: Django :: 6.0",
+    "Topic :: Internet :: WWW/HTTP :: Session",
+    "Topic :: Security",
+]
 dependencies = [
     "pydantic>=2.11.0",
     "pydantic-settings>=2.9.0",
-    "pyjwt>=2.10.0",
+    "pyjwt>=2.12.0",
     "django-ninja>=1.4.0",
 ]
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "pytest-django>=4.11.0",
     "pytest-freezer>=0.4.9",
     "pytest-mock>=3.14.0",
-    "pytest>=8.4.0",
+    "pytest>=9.0.3",
     "ruff>=0.12.0",
+    "pyrefly>=0.0.14",
 ]
 
 [tool.ruff]
@@ -47,10 +78,17 @@ ignore = [
 
 [project.urls]
 Homepage = "https://github.com/dvf/jwt-ninja"
+Repository = "https://github.com/dvf/jwt-ninja"
+Documentation = "https://github.com/dvf/jwt-ninja#readme"
+Changelog = "https://github.com/dvf/jwt-ninja/releases"
 
 [tool.isort]
 profile = "black"
 filter_files = true
+
+[tool.pyrefly]
+# Config is in pyrefly.toml
+# python-version = "3.12"
 
 [build-system]
 requires = ["hatchling", "uv-dynamic-versioning"]

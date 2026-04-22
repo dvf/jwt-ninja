@@ -42,6 +42,18 @@ def test_jwt_access_token_expire_seconds_reloads(monkeypatch):
     assert jwt_ninja_settings.jwt_settings.ACCESS_TOKEN_EXPIRE_SECONDS == 300
 
 
+def test_jwt_refresh_token_transport_reloads(monkeypatch):
+    assert jwt_ninja_settings.jwt_settings.REFRESH_TOKEN_TRANSPORT == "body"
+
+    monkeypatch.setenv("JWT_REFRESH_TOKEN_TRANSPORT", "cookie")
+    setting_changed.send(sender=None, setting="JWT_REFRESH_TOKEN_TRANSPORT", value="cookie", enter=True)
+    assert jwt_ninja_settings.jwt_settings.REFRESH_TOKEN_TRANSPORT == "cookie"
+
+    monkeypatch.delenv("JWT_REFRESH_TOKEN_TRANSPORT")
+    setting_changed.send(sender=None, setting="JWT_REFRESH_TOKEN_TRANSPORT", value=None, enter=False)
+    assert jwt_ninja_settings.jwt_settings.REFRESH_TOKEN_TRANSPORT == "body"
+
+
 class CustomPayload(JWTPayload):
     team_id: int = 0
 
