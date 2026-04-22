@@ -1,0 +1,15 @@
+# Pyrefly configuration
+# https://pyrefly.org/en/docs/configuration/
+
+python-version = "3.12"
+
+[errors]
+# Django ORM: Manager (.objects) is injected at runtime
+missing-attribute = false
+# Django Model fields: assignment compatibility
+bad-assignment = false
+bad-argument-type = false
+# Django Admin: list_display, readonly_fields etc use list vs tuple
+bad-override-mutable-attribute = false
+# Function definitions with None defaults
+bad-function-definition = false

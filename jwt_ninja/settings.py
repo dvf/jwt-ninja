@@ -1,4 +1,5 @@
 import warnings
+from typing import Literal
 
 from django.conf import settings
 from django.core.signals import setting_changed
@@ -46,12 +47,45 @@ def _warn_if_key_too_short(secret_key: str, algorithm: str) -> None:
 
 class JWTSettings(BaseSettings):
     SECRET_KEY: str = Field(default_factory=lambda: settings.SECRET_KEY)
-    ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_SECONDS: int = 300  # 5 minutes
-    REFRESH_TOKEN_EXPIRE_SECONDS: int = 365 * 3600  # 1 year
-    SESSION_EXPIRE_SECONDS: int = 365 * 3600  # 1 year
-    USER_LOGIN_AUTHENTICATOR: str = "jwt_ninja.authenticators.django_user_authenticator"
-    JWT_PAYLOAD_CLASS: str = "jwt_ninja.types.JWTPayload"
+    ALGORITHM: str = Field(default_factory=lambda: getattr(settings, "JWT_ALGORITHM", "HS256"))
+    ACCESS_TOKEN_EXPIRE_SECONDS: int = Field(
+        default_factory=lambda: getattr(settings, "JWT_ACCESS_TOKEN_EXPIRE_SECONDS", 300)
+    )
+    REFRESH_TOKEN_EXPIRE_SECONDS: int = Field(
+        default_factory=lambda: getattr(settings, "JWT_REFRESH_TOKEN_EXPIRE_SECONDS", 365 * 3600)
+    )
+    SESSION_EXPIRE_SECONDS: int = Field(
+        default_factory=lambda: getattr(settings, "JWT_SESSION_EXPIRE_SECONDS", 365 * 3600)
+    )
+    USER_LOGIN_AUTHENTICATOR: str = Field(
+        default_factory=lambda: getattr(
+            settings,
+            "JWT_USER_LOGIN_AUTHENTICATOR",
+            "jwt_ninja.authenticators.django_user_authenticator",
+        )
+    )
+    JWT_PAYLOAD_CLASS: str = Field(
+        default_factory=lambda: getattr(settings, "JWT_PAYLOAD_CLASS", "jwt_ninja.types.JWTPayload")
+    )
+    REFRESH_TOKEN_TRANSPORT: Literal["body", "cookie", "both"] = Field(
+        default_factory=lambda: getattr(settings, "JWT_REFRESH_TOKEN_TRANSPORT", "body")
+    )
+    REFRESH_COOKIE_NAME: str = Field(
+        default_factory=lambda: getattr(settings, "JWT_REFRESH_COOKIE_NAME", "refresh_token")
+    )
+    REFRESH_COOKIE_SECURE: bool = Field(default_factory=lambda: getattr(settings, "JWT_REFRESH_COOKIE_SECURE", True))
+    REFRESH_COOKIE_HTTPONLY: bool = Field(
+        default_factory=lambda: getattr(settings, "JWT_REFRESH_COOKIE_HTTPONLY", True)
+    )
+    REFRESH_COOKIE_SAMESITE: Literal["Lax", "Strict", "None"] = Field(
+        default_factory=lambda: getattr(settings, "JWT_REFRESH_COOKIE_SAMESITE", "Lax")
+    )
+    REFRESH_COOKIE_PATH: str = Field(
+        default_factory=lambda: getattr(settings, "JWT_REFRESH_COOKIE_PATH", "/auth/refresh/")
+    )
+    REFRESH_COOKIE_DOMAIN: str | None = Field(
+        default_factory=lambda: getattr(settings, "JWT_REFRESH_COOKIE_DOMAIN", None)
+    )
 
     model_config = SettingsConfigDict(
         env_prefix="JWT_",

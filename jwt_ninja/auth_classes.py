@@ -5,6 +5,7 @@ from django.http import HttpRequest
 from django.utils import timezone
 from ninja.security import HttpBearer
 
+from . import settings as jwt_settings_module
 from .cryptography import decode_jwt
 from .errors import (
     APIError,
@@ -13,7 +14,6 @@ from .errors import (
     JWTInvalidTokenError,
 )
 from .models import Session
-from .settings import jwt_settings
 
 User = get_user_model()
 
@@ -32,7 +32,7 @@ class AuthedRequest(HttpRequest):
 class JWTAuth(HttpBearer):
     def authenticate(self, request: HttpRequest, token: str) -> AuthDetails | None:
         try:
-            payload = decode_jwt(token, jwt_settings.payload_class)
+            payload = decode_jwt(token, jwt_settings_module.jwt_settings.payload_class)
         except JWTExpiredError:
             raise APIError("expired_token", 401)
         except (JWTInvalidPayloadFormat, JWTInvalidTokenError):

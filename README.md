@@ -1,10 +1,12 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/048de9e1-9141-4717-9b3e-63f828e5512f" />
   <source media="(prefers-color-scheme: light)" srcset="https://github.com/user-attachments/assets/fe969f21-3986-4bd4-b75c-96e4e8bdf1c8" />
-  <img alt="Fallback image description" src="https://github.com/user-attachments/assets/fe969f21-3986-4bd4-b75c-96e4e8bdf1c8">
+  <img alt="JWT Ninja Logo" src="https://github.com/user-attachments/assets/fe969f21-3986-4bd4-b75c-96e4e8bdf1c8" />
 </picture>
 
 <br/>
+
+# JWT Ninja
 
 *A session‑backed, fully‑typed authentication library for **[Django Ninja](https://django-ninja.dev/)**, powered by **[PyJWT](https://pyjwt.readthedocs.io/)**.*
 
@@ -21,6 +23,7 @@
 
 - **Stateful JWTs.** Every token is tied to a DB-backed `Session` row — so you get token-based auth *and* revocation, device listing, and per-session state.
 - **Fully typed.** Protected routes receive an `AuthedRequest` with `request.auth.user` and `request.auth.session` typed; OpenAPI schemas are generated with typed error responses.
+- **Flexible refresh-token transport.** Use JSON body transport, HttpOnly cookies, or both.
 - **Batteries included.** Five auth endpoints, a Django admin page, pluggable payload class for custom claims, pluggable authenticator for non-password login flows.
 
 ---
@@ -33,6 +36,8 @@
 - [Endpoints](#endpoints)
 - [Error Codes](#error-codes)
 - [Configuration](#configuration)
+- [Signing key length](#signing-key-length)
+- [Refresh token transport](#refresh-token-transport)
 - [Custom Claims](#custom-claims)
 - [Custom Authenticator](#custom-authenticator)
 - [Session Management](#session-management)
@@ -119,7 +124,7 @@ def set_theme(request: AuthedRequest, theme: str):
 
 | Method | Path                | Purpose                                         | Success | Errors              |
 | ------ | ------------------- | ----------------------------------------------- | ------- | ------------------- |
-| `POST` | `/auth/login/`      | Issue a new **access** & **refresh** token pair | `200`   | `401`               |
+| `POST` | `/auth/login/`      | Issue a new **access** token and refresh token transport | `200`   | `401`               |
 | `POST` | `/auth/refresh/`    | Refresh an access token                         | `200`   | `400`, `401`        |
 | `GET`  | `/auth/sessions/`   | List the caller's active sessions               | `200`   | `401`               |
 | `POST` | `/auth/logout/`     | Expire the caller's current session             | `200`   | `401`               |
@@ -132,17 +137,28 @@ def set_theme(request: AuthedRequest, theme: str):
 { "username": "alice", "password": "hunter2" }
 ```
 
-**Response (`200`)**
+**Response (`200`) in `body` mode**
 ```json
 { "access_token": "eyJhbGci…", "refresh_token": "eyJhbGci…" }
 ```
 
+**Response (`200`) in `cookie` mode**
+```json
+{ "access_token": "eyJhbGci…" }
+```
+
+In `cookie` mode, the refresh token is set as an HttpOnly cookie instead of being returned in JSON. In `both` mode, JWT Ninja does both.
+
 ### `POST /auth/refresh/`
 
-**Request**
+**Request in `body` mode**
 ```json
 { "refresh_token": "eyJhbGci…" }
 ```
+
+**Request in `cookie` mode**
+
+Send the refresh token cookie previously set by `/auth/login/`.
 
 **Response (`200`)**
 ```json
@@ -153,15 +169,15 @@ def set_theme(request: AuthedRequest, theme: str):
 
 All errors are returned as a JSON body `{"error_code": "..."}` with an appropriate HTTP status. Use these for i18n-friendly UX on the client.
 
-| Code                    | Status | Meaning                                                        |
-| ----------------------- | ------ | -------------------------------------------------------------- |
-| `invalid_credentials`   | `401`  | Username/password did not authenticate a user.                 |
-| `expired_token`         | `401`  | Token's `exp` claim is in the past.                            |
-| `invalid_token`         | `401`  | Token signature invalid, malformed, or wrong secret.           |
-| `invalid_token_type`    | `400`  | Sent an `access` token to `/refresh/` or similar.              |
+| Code                    | Status | Meaning                                                          |
+| ----------------------- | ------ | ---------------------------------------------------------------- |
+| `invalid_credentials`   | `401`  | Username/password did not authenticate a user.                   |
+| `expired_token`         | `401`  | Token's `exp` claim is in the past.                              |
+| `invalid_token`         | `401`  | Token signature invalid, malformed, wrong secret, or missing.    |
+| `invalid_token_type`    | `400`  | Sent an `access` token to `/refresh/` or similar.                |
 | `invalid_user`          | `401`  | User attached to token no longer exists or is `is_active=False`. |
-| `session_not_found`     | `401`  | Session referenced by the token has been deleted.              |
-| `session_expired`       | `401`  | Session was explicitly logged out or has an `expired_at`.      |
+| `session_not_found`     | `401`  | Session referenced by the token has been deleted.                |
+| `session_expired`       | `401`  | Session was explicitly logged out or has an `expired_at`.        |
 
 ## Configuration
 
@@ -176,17 +192,31 @@ JWT_REFRESH_TOKEN_EXPIRE_SECONDS = 365 * 3600  # 1 year
 JWT_SESSION_EXPIRE_SECONDS = 365 * 3600        # 1 year
 JWT_USER_LOGIN_AUTHENTICATOR = "jwt_ninja.authenticators.django_user_authenticator"
 JWT_PAYLOAD_CLASS = "jwt_ninja.types.JWTPayload"
+JWT_REFRESH_TOKEN_TRANSPORT = "body"          # "body", "cookie", or "both"
+JWT_REFRESH_COOKIE_NAME = "refresh_token"
+JWT_REFRESH_COOKIE_SECURE = True
+JWT_REFRESH_COOKIE_HTTPONLY = True
+JWT_REFRESH_COOKIE_SAMESITE = "Lax"           # "Lax", "Strict", or "None"
+JWT_REFRESH_COOKIE_PATH = "/auth/refresh/"
+JWT_REFRESH_COOKIE_DOMAIN = None
 ```
 
-| Setting                              | Type  | Description                                                                                   |
-| ------------------------------------ | ----- | --------------------------------------------------------------------------------------------- |
-| `JWT_SECRET_KEY`                     | `str` | Signing key. Defaults to Django's `SECRET_KEY`. See [Signing key length](#signing-key-length). |
-| `JWT_ALGORITHM`                      | `str` | PyJWT algorithm. Symmetric (`HS*`) or asymmetric (`RS*`, `ES*`, …).                          |
-| `JWT_ACCESS_TOKEN_EXPIRE_SECONDS`    | `int` | Lifetime of the short-lived access token.                                                    |
-| `JWT_REFRESH_TOKEN_EXPIRE_SECONDS`   | `int` | Lifetime of the refresh token.                                                               |
-| `JWT_SESSION_EXPIRE_SECONDS`         | `int` | Max age of the DB `Session` row before it's considered expired by housekeeping.              |
-| `JWT_USER_LOGIN_AUTHENTICATOR`       | `str` | Dotted path to a callable `(request, payload) -> User \| None` used by `/auth/login/`.       |
-| `JWT_PAYLOAD_CLASS`                  | `str` | Dotted path to a `JWTPayload` subclass if you need custom claims.                            |
+| Setting                              | Type                               | Description                                                                                     |
+| ------------------------------------ | ---------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `JWT_SECRET_KEY`                     | `str`                              | Signing key. Defaults to Django's `SECRET_KEY`. See [Signing key length](#signing-key-length). |
+| `JWT_ALGORITHM`                      | `str`                              | PyJWT algorithm. Symmetric (`HS*`) or asymmetric (`RS*`, `ES*`, …).                            |
+| `JWT_ACCESS_TOKEN_EXPIRE_SECONDS`    | `int`                              | Lifetime of the short-lived access token.                                                      |
+| `JWT_REFRESH_TOKEN_EXPIRE_SECONDS`   | `int`                              | Lifetime of the refresh token.                                                                 |
+| `JWT_SESSION_EXPIRE_SECONDS`         | `int`                              | Max age of the DB `Session` row before it's considered expired by housekeeping.                |
+| `JWT_USER_LOGIN_AUTHENTICATOR`       | `str`                              | Dotted path to a callable `(request, payload) -> User \| None` used by `/auth/login/`.         |
+| `JWT_PAYLOAD_CLASS`                  | `str`                              | Dotted path to a `JWTPayload` subclass if you need custom claims.                              |
+| `JWT_REFRESH_TOKEN_TRANSPORT`        | `"body" \| "cookie" \| "both"` | Where refresh tokens are returned/read.                                                        |
+| `JWT_REFRESH_COOKIE_NAME`            | `str`                              | Cookie name used when cookie transport is enabled.                                             |
+| `JWT_REFRESH_COOKIE_SECURE`          | `bool`                             | Sets the cookie's `Secure` flag.                                                               |
+| `JWT_REFRESH_COOKIE_HTTPONLY`        | `bool`                             | Sets the cookie's `HttpOnly` flag.                                                             |
+| `JWT_REFRESH_COOKIE_SAMESITE`        | `"Lax" \| "Strict" \| "None"` | Sets the cookie's `SameSite` policy.                                                           |
+| `JWT_REFRESH_COOKIE_PATH`            | `str`                              | Restricts the cookie to the refresh endpoint path.                                             |
+| `JWT_REFRESH_COOKIE_DOMAIN`          | `str \| None`                     | Optional cookie domain override.                                                               |
 
 ### Signing key length
 
@@ -209,6 +239,32 @@ python -c "from django.core.management.utils import get_random_secret_key; print
 ```
 
 Rotating the key invalidates all existing JWT Ninja sessions (existing tokens fail signature verification), so users will need to re-authenticate after deploying the change.
+
+## Refresh token transport
+
+JWT Ninja supports three refresh-token transport modes:
+
+- **`"body"`** *(default)* — `login/` returns `refresh_token` in JSON and `refresh/` expects it in the request body.
+- **`"cookie"`** — `login/` sets the refresh token in an **HttpOnly cookie** and `refresh/` reads it from that cookie.
+- **`"both"`** — `login/` returns the refresh token in JSON **and** sets the cookie; `refresh/` accepts either the request body or the cookie.
+
+Example browser-oriented configuration:
+
+```python
+JWT_REFRESH_TOKEN_TRANSPORT = "cookie"
+JWT_REFRESH_COOKIE_SECURE = True
+JWT_REFRESH_COOKIE_HTTPONLY = True
+JWT_REFRESH_COOKIE_SAMESITE = "Lax"
+JWT_REFRESH_COOKIE_PATH = "/auth/refresh/"
+```
+
+In `cookie` mode:
+
+- `POST /auth/login/` returns the `access_token` in JSON and sets the refresh token cookie.
+- `POST /auth/refresh/` reads the refresh token from the cookie.
+- `POST /auth/logout/` and `POST /auth/logout/all/` clear the refresh token cookie.
+
+> **Security note:** HttpOnly cookies reduce refresh-token exposure to JavaScript, but cookie-based auth flows are still subject to CSRF considerations. For browser deployments, prefer `Secure=True`, keep refresh endpoints as `POST`, and choose an appropriate `SameSite` policy for your application.
 
 ## Custom Claims
 
@@ -256,8 +312,9 @@ If you don't use Django's `username`/`password` flow (SSO, magic links, OTP, etc
 
 ```python
 # myapp/auth.py
-from django.http import HttpRequest
 from django.contrib.auth import get_user_model
+from django.http import HttpRequest
+from django.utils.timezone import now
 
 User = get_user_model()
 
