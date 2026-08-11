@@ -54,8 +54,8 @@ dev = [
     "pytest-freezer>=0.4.9",
     "pytest-mock>=3.14.0",
     "pytest>=9.0.3",
-    "ruff>=0.12.0",
     "pyrefly>=0.0.14",
+    "ruff>=0.16.2",
 ]
 
 [tool.ruff]

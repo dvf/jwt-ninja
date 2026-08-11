@@ -128,7 +128,7 @@ router = Router()
 
 @router.get("/profile/", auth=JWTAuth())
 def profile(request: AuthedRequest):
-    user = request.auth.user        # the Django User
+    user = request.auth.user  # the Django User
     session = request.auth.session  # the jwt_ninja Session
     return {"username": user.username, "session_id": session.id}
 ```
@@ -219,19 +219,19 @@ All settings are Django settings prefixed with `JWT_`. Defaults shown below:
 
 ```python
 # settings.py
-JWT_SECRET_KEY = SECRET_KEY                    # Defaults to Django's SECRET_KEY
+JWT_SECRET_KEY = SECRET_KEY  # Defaults to Django's SECRET_KEY
 JWT_ALGORITHM = "HS256"
-JWT_ACCESS_TOKEN_EXPIRE_SECONDS = 300          # 5 minutes
+JWT_ACCESS_TOKEN_EXPIRE_SECONDS = 300  # 5 minutes
 JWT_REFRESH_TOKEN_EXPIRE_SECONDS = 365 * 3600  # ~15 days
-JWT_SESSION_EXPIRE_SECONDS = 365 * 3600        # ~15 days (0 disables session expiry)
-JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS = 30     # 0 disables the grace window
+JWT_SESSION_EXPIRE_SECONDS = 365 * 3600  # ~15 days (0 disables session expiry)
+JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS = 30  # 0 disables the grace window
 JWT_USER_LOGIN_AUTHENTICATOR = "jwt_ninja.authenticators.django_user_authenticator"
 JWT_PAYLOAD_CLASS = "jwt_ninja.types.JWTPayload"
-JWT_REFRESH_TOKEN_TRANSPORT = "body"          # "body", "cookie", or "both"
+JWT_REFRESH_TOKEN_TRANSPORT = "body"  # "body", "cookie", or "both"
 JWT_REFRESH_COOKIE_NAME = "refresh_token"
 JWT_REFRESH_COOKIE_SECURE = True
 JWT_REFRESH_COOKIE_HTTPONLY = True
-JWT_REFRESH_COOKIE_SAMESITE = "Lax"           # "Lax", "Strict", or "None"
+JWT_REFRESH_COOKIE_SAMESITE = "Lax"  # "Lax", "Strict", or "None"
 JWT_REFRESH_COOKIE_PATH = "/auth/refresh/"
 JWT_REFRESH_COOKIE_DOMAIN = None
 ```
