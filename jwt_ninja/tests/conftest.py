@@ -106,6 +106,26 @@ def expired_sessions(test_user, user_session, freezer) -> list[Session]:
 def refresh_token(test_user, user_session, seven_days_from_now) -> str:
     """
     Fixture to generate a valid refresh token for the test user.
+
+    The session is rotated first so the token carries the `jti` the session
+    currently accepts, matching what /auth/login/ hands out.
+    """
+    jti = user_session.rotate_refresh_jti()
+    payload = JWTPayload(
+        user_id=test_user.id,
+        type="refresh",
+        exp=seven_days_from_now,
+        session_id=user_session.id,
+        jti=jti,
+    )
+    return generate_jwt(payload)
+
+
+@pytest.fixture
+def legacy_refresh_token(test_user, user_session, seven_days_from_now) -> str:
+    """
+    A refresh token issued before rotation existed: no `jti`, and a session
+    that has never been rotated.
     """
     payload = JWTPayload(
         user_id=test_user.id,

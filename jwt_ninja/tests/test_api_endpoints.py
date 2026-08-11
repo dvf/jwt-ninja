@@ -390,7 +390,9 @@ def test_refresh_token_deleted_user(ninja_client, refresh_token, test_user):
 
     assert response.status_code == 401
     json_response = response.json()
-    assert json_response["error_code"] == "invalid_user"
+    # Deleting the user cascades to their sessions, so the missing session is
+    # what the refresh endpoint notices first.
+    assert json_response["error_code"] == "session_not_found"
 
 
 @pytest.mark.django_db

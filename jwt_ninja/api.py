@@ -18,7 +18,6 @@ from .errors import (
 from .models import Session
 from .request import get_client_ip
 from .types import (
-    AccessTokenSchema,
     ErrorResponseType,
     LoginSchema,
     RefreshTokenSchema,
@@ -65,6 +64,35 @@ def _build_login_response(access_token: str, refresh_token: str) -> JsonResponse
     return response
 
 
+def _issue_token_pair(user: User, session: Session) -> tuple[str, str]:
+    """
+    Mint an access/refresh pair bound to `session`, rotating its refresh token id.
+
+    Rotating here means the refresh token handed out by the previous call stops
+    being accepted once the grace window closes, so a leaked token has a short
+    useful life and its replay is detectable.
+    """
+    jti = session.rotate_refresh_jti()
+    current_timestamp = int(time.time())
+
+    access_payload = jwt_settings_module.jwt_settings.payload_class(
+        user_id=user.id,
+        type="access",
+        # RFC 7519 says that the exp must be a NumericDate
+        # see https://www.rfc-editor.org/rfc/rfc7519#section-4.1.4
+        exp=current_timestamp + jwt_settings_module.jwt_settings.ACCESS_TOKEN_EXPIRE_SECONDS,
+        session_id=session.id,
+    )
+    refresh_payload = jwt_settings_module.jwt_settings.payload_class(
+        user_id=user.id,
+        type="refresh",
+        exp=current_timestamp + jwt_settings_module.jwt_settings.REFRESH_TOKEN_EXPIRE_SECONDS,
+        session_id=session.id,
+        jti=jti,
+    )
+    return generate_jwt(access_payload), generate_jwt(refresh_payload)
+
+
 def _get_refresh_token(request: HttpRequest, payload: RefreshTokenSchema | None) -> str:
     body_refresh_token = payload.refresh_token if payload else None
 
@@ -103,24 +131,7 @@ def login(request: HttpRequest, payload: LoginSchema) -> HttpResponse:
         ip_address=get_client_ip(request),
     )
 
-    current_timestamp = int(time.time())
-    access_payload = jwt_settings_module.jwt_settings.payload_class(
-        user_id=user.id,
-        type="access",
-        # RFC 7519 says that the exp must be a NumericDate
-        # see https://www.rfc-editor.org/rfc/rfc7519#section-4.1.4
-        exp=current_timestamp + jwt_settings_module.jwt_settings.ACCESS_TOKEN_EXPIRE_SECONDS,
-        session_id=session.id,
-    )
-    access_token = generate_jwt(access_payload)
-
-    refresh_payload = jwt_settings_module.jwt_settings.payload_class(
-        user_id=user.id,
-        exp=current_timestamp + jwt_settings_module.jwt_settings.REFRESH_TOKEN_EXPIRE_SECONDS,
-        type="refresh",
-        session_id=session.id,
-    )
-    refresh_token = generate_jwt(refresh_payload)
+    access_token, refresh_token = _issue_token_pair(user, session)
 
     return _build_login_response(access_token=access_token, refresh_token=refresh_token)
 
@@ -130,13 +141,16 @@ def login(request: HttpRequest, payload: LoginSchema) -> HttpResponse:
     summary="Refresh an access token",
     description="Supply a valid, unexpired `refresh_token` to obtain a new `access_token`.",
     response={
-        200: AccessTokenSchema,
+        200: TokenSchema,
         400: ErrorResponseType[Literal["invalid_token_type"]],
         401: ErrorResponseType[
             Literal[
                 "expired_token",
                 "invalid_token",
                 "invalid_user",
+                "session_not_found",
+                "session_expired",
+                "token_reuse_detected",
             ]
         ],
     },
@@ -155,24 +169,34 @@ def new_refresh_token(request: HttpRequest, payload: RefreshTokenSchema | None =
     if refresh_payload.type != "refresh":
         raise APIError("invalid_token_type", http_status_code=400)
 
+    # A signature alone is not authority to mint tokens: the session behind the
+    # token has to still be live, or logging out would not end the refresh path.
+    try:
+        session = Session.objects.get(id=refresh_payload.session_id)
+    except Session.DoesNotExist:
+        raise APIError("session_not_found", http_status_code=401)
+
+    if session.expired_at and session.expired_at < timezone.now():
+        raise APIError("session_expired", http_status_code=401)
+
+    if session.user_id != refresh_payload.user_id:
+        raise APIError("invalid_token", http_status_code=401)
+
+    # A refresh token this session has already rotated past is either a replay
+    # of a stolen token or a token that outlived its rotation. Either way the
+    # session is no longer trustworthy, so end it rather than serve it.
+    if not session.accepts_refresh_jti(refresh_payload.jti):
+        session.invalidate_session()
+        raise APIError("token_reuse_detected", http_status_code=401)
+
     try:
         user = User.objects.get(id=refresh_payload.user_id, is_active=True)
     except User.DoesNotExist:
         raise APIError("invalid_user", http_status_code=401)
 
-    current_timestamp = int(time.time())
-    access_payload = jwt_settings_module.jwt_settings.payload_class(
-        user_id=user.id,
-        exp=current_timestamp + jwt_settings_module.jwt_settings.ACCESS_TOKEN_EXPIRE_SECONDS,
-        type="access",
-        session_id=refresh_payload.session_id,
-    )
-    try:
-        access_token = generate_jwt(access_payload)
-    except (JWTExpiredError, JWTInvalidTokenError, JWTInvalidPayloadFormat):
-        raise APIError("invalid_token", http_status_code=401)
+    access_token, new_refresh = _issue_token_pair(user, session)
 
-    return AccessTokenSchema(access_token=access_token)
+    return _build_login_response(access_token=access_token, refresh_token=new_refresh)
 
 
 @router.get(
@@ -182,7 +206,7 @@ def new_refresh_token(request: HttpRequest, payload: RefreshTokenSchema | None =
     auth=JWTAuth(),
 )
 def list_active_sessions(request: AuthedRequest):
-    return request.auth.user.jwt_sessions.filter(expired_at__isnull=True)
+    return request.auth.user.jwt_sessions.active()
 
 
 @router.post(
@@ -211,12 +235,7 @@ def logout(request: AuthedRequest) -> HttpResponse:
 )
 def logout_all(request: AuthedRequest) -> HttpResponse:
     # Sign out all active sessions
-    Session.objects.filter(
-        user_id=request.auth.user.id,
-        expired_at__isnull=True,
-    ).update(
-        expired_at=timezone.now(),
-    )
+    Session.invalidate_all_user_sessions(request.auth.user)
 
     response = HttpResponse(status=200)
     if jwt_settings_module.jwt_settings.REFRESH_TOKEN_TRANSPORT in {"cookie", "both"}:

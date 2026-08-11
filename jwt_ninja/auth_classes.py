@@ -38,6 +38,11 @@ class JWTAuth(HttpBearer):
         except (JWTInvalidPayloadFormat, JWTInvalidTokenError):
             raise APIError("invalid_token", 401)
 
+        # Refresh tokens are long-lived and, under cookie transport, scoped to
+        # the refresh endpoint. They must never authenticate a protected route.
+        if payload.type != "access":
+            raise APIError("invalid_token_type", 401)
+
         # Validate the Session
         try:
             session = Session.objects.get(id=payload.session_id)
@@ -45,6 +50,11 @@ class JWTAuth(HttpBearer):
             raise APIError("session_not_found", 401)
         if session.expired_at and session.expired_at < timezone.now():
             raise APIError("session_expired", 401)
+
+        # The session and the user are named by two independent claims; a token
+        # that pairs them differently than the DB does is not one we issued.
+        if session.user_id != payload.user_id:
+            raise APIError("invalid_token", 401)
 
         # Validate the user
         try:

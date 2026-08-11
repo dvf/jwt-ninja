@@ -16,8 +16,16 @@ def generate_jwt(payload: JWTPayload) -> str:
     Returns:
         str: The encoded JWT as a string.
     """
+    claims = payload.model_dump(mode="json")
+
+    # RFC 7519 §4.1.7 types `jti` as a string and PyJWT rejects a null one, so
+    # the claim is omitted entirely on tokens that don't carry an id rather
+    # than serialised as `"jti": null`.
+    if claims.get("jti", False) is None:
+        del claims["jti"]
+
     return jwt.encode(
-        payload=payload.model_dump(mode="json"),
+        payload=claims,
         key=jwt_settings_module.jwt_settings.SECRET_KEY,
         algorithm=jwt_settings_module.jwt_settings.ALGORITHM,
     )
@@ -44,6 +52,10 @@ def decode_jwt(token: str, payload_class: type[JWTPayload]) -> JWTPayload:
             jwt=token,
             key=jwt_settings_module.jwt_settings.SECRET_KEY,
             algorithms=[jwt_settings_module.jwt_settings.ALGORITHM],
+            # PyJWT only checks `exp` when it is present. Requiring it here
+            # stops a custom JWT_PAYLOAD_CLASS that makes `exp` optional from
+            # silently minting tokens that never expire.
+            options={"require": ["exp"]},
         )
 
     except jwt.ExpiredSignatureError as err:

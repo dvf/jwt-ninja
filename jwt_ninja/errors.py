@@ -60,6 +60,7 @@ ErrorCode = Literal[
     "invalid_user",
     "session_not_found",
     "session_expired",
+    "token_reuse_detected",
 ]
 
 

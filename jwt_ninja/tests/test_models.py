@@ -15,7 +15,9 @@ def test_create_session_with_ip_address(test_user):
 
     assert session.user == test_user
     assert session.ip_address == "1.2.3.4"
-    assert session.expired_at is None
+    # Sessions get a hard expiry from SESSION_EXPIRE_SECONDS
+    assert session.expired_at is not None
+    assert session.expired_at > timezone.now()
 
 
 @pytest.mark.django_db
@@ -66,7 +68,7 @@ def test_is_expired_reflects_updates(test_user):
 @pytest.mark.django_db
 def test_invalidate_session_sets_expired_at(test_user):
     session = Session.create_session(user=test_user, ip_address="1.2.3.4")
-    assert session.expired_at is None
+    assert session.is_expired is False
 
     before = timezone.now()
     session.invalidate_session()
@@ -97,9 +99,9 @@ def test_invalidate_all_user_sessions(test_user):
     session_b.refresh_from_db()
     other_session.refresh_from_db()
 
-    assert session_a.expired_at is not None
-    assert session_b.expired_at is not None
-    assert other_session.expired_at is None
+    assert session_a.is_expired is True
+    assert session_b.is_expired is True
+    assert other_session.is_expired is False
 
 
 @pytest.mark.django_db
