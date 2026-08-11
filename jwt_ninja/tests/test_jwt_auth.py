@@ -24,13 +24,13 @@ def user(mocker):
 
 
 @pytest.fixture
-def session(mocker):
-    return mocker.MagicMock(id=333, expired_at=None)
+def session(mocker, user):
+    return mocker.MagicMock(id=333, expired_at=None, user_id=user.id)
 
 
 @pytest.fixture
 def payload(mocker, user, session):
-    return mocker.MagicMock(user_id=user.id, session_id=session.id)
+    return mocker.MagicMock(type="access", user_id=user.id, session_id=session.id)
 
 
 @pytest.fixture

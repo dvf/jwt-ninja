@@ -9,6 +9,11 @@ class JWTPayload(BaseModel):
     type: Literal["access", "refresh"]
     exp: int
 
+    # Identifies a specific refresh token so it can be rotated and replays
+    # detected. Absent on access tokens, and on refresh tokens issued before
+    # rotation was introduced.
+    jti: str | None = None
+
     # Custom claims
     user_id: int
     session_id: str
@@ -28,10 +33,6 @@ class RefreshTokenSchema(BaseModel):
     refresh_token: str | None = None
 
 
-class AccessTokenSchema(BaseModel):
-    access_token: str
-
-
 E = TypeVar("E", bound=str)
 
 
@@ -43,4 +44,6 @@ class SessionResponse(Schema):
     id: str
     created_at: datetime
     last_activity_at: datetime = Field(alias="updated_at")
-    ip_address: str
+    # Nullable on the model: the client IP is unknown when the request carries
+    # neither REMOTE_ADDR nor a usable forwarded header.
+    ip_address: str | None

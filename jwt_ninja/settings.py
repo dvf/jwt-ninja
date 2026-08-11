@@ -1,7 +1,9 @@
 import warnings
 from typing import Literal
 
+import jwt.algorithms
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 from django.core.signals import setting_changed
 from django.utils.module_loading import import_string
 from pydantic import Field
@@ -25,6 +27,27 @@ _HMAC_MIN_KEY_BYTES = {
     "HS384": 48,
     "HS512": 64,
 }
+
+
+def _validate_algorithm(algorithm: str) -> None:
+    """
+    Reject algorithms PyJWT cannot use, and the unsigned `none` algorithm.
+
+    The set of usable algorithms depends on whether PyJWT's optional
+    cryptography extra is installed, so it is read from PyJWT rather than
+    hardcoded — `pip install pyjwt[crypto]` is what unlocks RS*/ES*/PS*/EdDSA.
+    """
+    supported = set(jwt.algorithms.get_default_algorithms()) - {"none"}
+    if algorithm in supported:
+        return
+
+    if algorithm.lower() == "none":
+        raise ImproperlyConfigured("JWT_ALGORITHM cannot be 'none'. Unsigned tokens can be forged by anyone.")
+    raise ImproperlyConfigured(
+        f"JWT_ALGORITHM {algorithm!r} is not available. Supported algorithms are "
+        f"{', '.join(sorted(supported))}. Asymmetric algorithms require PyJWT's "
+        f"cryptography extra: pip install 'pyjwt[crypto]'."
+    )
 
 
 def _warn_if_key_too_short(secret_key: str, algorithm: str) -> None:
@@ -86,6 +109,9 @@ class JWTSettings(BaseSettings):
     REFRESH_COOKIE_DOMAIN: str | None = Field(
         default_factory=lambda: getattr(settings, "JWT_REFRESH_COOKIE_DOMAIN", None)
     )
+    REFRESH_TOKEN_REUSE_GRACE_SECONDS: int = Field(
+        default_factory=lambda: getattr(settings, "JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS", 30)
+    )
 
     model_config = SettingsConfigDict(
         env_prefix="JWT_",
@@ -105,6 +131,7 @@ class JWTSettings(BaseSettings):
                 django_overrides[field_name] = getattr(settings, django_key)
         super().__init__(**django_overrides)
         self._JWT_PAYLOAD_CLASS = import_string(self.JWT_PAYLOAD_CLASS)
+        _validate_algorithm(self.ALGORITHM)
         _warn_if_key_too_short(self.SECRET_KEY, self.ALGORITHM)
 
     @property
