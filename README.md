@@ -17,8 +17,6 @@
 
 **[Documentation](https://dvf.github.io/jwt-ninja/)** · **[PyPI](https://pypi.org/project/jwtninja/)** · **[Changelog](https://github.com/dvf/jwt-ninja/releases)**
 
-> **Contributions are welcome.** Submit a PR.
-
 ---
 
 ## Why JWT Ninja
