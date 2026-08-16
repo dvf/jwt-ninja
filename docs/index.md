@@ -4,7 +4,8 @@ hide:
   - navigation
 ---
 
-# JWT Ninja
+![JWT Ninja](assets/logo-light.png#only-light){ width="340" }
+![JWT Ninja](assets/logo-dark.png#only-dark){ width="340" }
 
 *A session-backed, fully-typed authentication library for **[Django Ninja](https://django-ninja.dev/)**, powered by **[PyJWT](https://pyjwt.readthedocs.io/)**.*
 
