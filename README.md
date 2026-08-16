@@ -19,10 +19,11 @@
 
 ## Why JWT Ninja
 
-- **Stateful JWTs.** Every token maps to a `Session` row in the database. You get token-based auth plus revocation, device listing, and per-session state.
+- **Stateful JWTs.** Every token maps to a `Session` row in the database. You get token-based auth plus instant revocation and per-session state.
+- **Built-in device management.** Each user gets a session list with IP address, browser, and location. Users can sign out one device or all devices. See [Device management](#device-management).
 - **Fully typed.** Protected routes receive an `AuthedRequest` with typed `request.auth.user` and `request.auth.session`. OpenAPI schemas include typed error responses.
 - **Three refresh-token transports.** JSON body, HttpOnly cookie, or both.
-- **Complete.** Five auth endpoints, a Django admin page, a pluggable payload class for custom claims, and a pluggable authenticator for non-password login flows.
+- **Complete.** Six auth endpoints, a Django admin page, a pluggable payload class for custom claims, a pluggable authenticator for non-password login flows, and a pluggable geolocation provider for the session list.
 
 ---
 
@@ -31,6 +32,7 @@
 - [Install](#install)
 - [Quick start](#quick-start)
 - [Protecting your views](#protecting-your-views)
+- [Device management](#device-management)
 - [Endpoints](#endpoints)
 - [Error codes](#error-codes)
 - [Upgrading](#upgrading)
@@ -97,7 +99,7 @@ api.add_router("auth/", auth_router)
 api.add_exception_handler(APIError, error_handler)
 ```
 
-This gives you `/auth/login/`, `/auth/refresh/`, `/auth/sessions/`, `/auth/logout/`, and `/auth/logout/all/`.
+This gives you `/auth/login/`, `/auth/refresh/`, `/auth/sessions/`, `/auth/sessions/{id}/`, `/auth/logout/`, and `/auth/logout/all/`.
 
 ## Protecting your views
 
@@ -129,15 +131,96 @@ def set_theme(request: AuthedRequest, theme: str):
     return {"ok": True}
 ```
 
+## Device management
+
+Most JWT libraries stop after they issue a token. Because every JWT Ninja token maps to a database session, your users get the "where am I signed in?" screen they know from Google or GitHub. No extra services, no extra dependencies.
+
+`GET /auth/sessions/` returns one row for each logged-in device:
+
+```json
+[
+  {
+    "id": "8dKt2…",
+    "created_at": "2026-08-16T09:12:03Z",
+    "last_activity_at": "2026-08-16T11:47:20Z",
+    "ip_address": "203.0.113.42",
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) … Chrome/126.0.0.0 Safari/537.36",
+    "browser": "Chrome on macOS",
+    "location": {
+      "city": "Amsterdam",
+      "region": "North Holland",
+      "country": "Netherlands",
+      "country_code": "NL",
+      "latitude": 52.37,
+      "longitude": 4.89
+    },
+    "is_current": true
+  }
+]
+```
+
+- At login, JWT Ninja records the client IP address and the `User-Agent` header.
+- `browser` is a summary of the recorded `User-Agent`, for example "Chrome on macOS". JWT Ninja parses it in-process, with no added dependency.
+- `location` shows where the login came from. It is `null` until you configure a [geolocation provider](#session-geolocation).
+- `is_current` is `true` on the session that makes the request. Use it to label "this device" and to warn before sign-out.
+
+Users can sign out of any session:
+
+| Action                    | Endpoint                       |
+| ------------------------- | ------------------------------ |
+| Sign out this device      | `POST /auth/logout/`           |
+| Sign out one other device | `DELETE /auth/sessions/{id}/`  |
+| Sign out all devices      | `POST /auth/logout/all/`       |
+
+A revoked session immediately stops both its access tokens and its refresh tokens.
+
+### Session geolocation
+
+Geolocation is off by default. To fill the `location` field, point `JWT_GEOLOCATION_PROVIDER` at a callable. JWT Ninja includes a free provider backed by [ipapi.co](https://ipapi.co) — HTTPS, no API key, approximately 1,000 lookups per day:
+
+```python
+# settings.py
+JWT_GEOLOCATION_PROVIDER = "jwt_ninja.geolocation.ipapi_co_geolocator"
+```
+
+The provider runs one time per login, and JWT Ninja stores the result on the session. The list endpoint reads the stored value and does no lookups. If the provider fails, JWT Ninja logs the error and completes the login without a location. JWT Ninja does not send private, loopback, or other non-routable addresses to the provider.
+
+To use an offline database or a paid API, write your own provider. Any callable `(ip: str) -> GeoLocation | None` works. An offline database avoids the per-login HTTP round-trip and third-party rate limits:
+
+```python
+# myapp/geo.py — offline lookups via MaxMind GeoLite2 and Django's GeoIP2
+from django.contrib.gis.geoip2 import GeoIP2
+from jwt_ninja import GeoLocation
+
+
+def geoip2_geolocator(ip_address: str) -> GeoLocation | None:
+    match = GeoIP2().city(ip_address)
+    return GeoLocation(
+        city=match["city"],
+        country=match["country_name"],
+        country_code=match["country_code"],
+        latitude=match["latitude"],
+        longitude=match["longitude"],
+    )
+```
+
+```python
+# settings.py
+JWT_GEOLOCATION_PROVIDER = "myapp.geo.geoip2_geolocator"
+```
+
+> **Privacy note:** an HTTP provider sends your users' IP addresses to a third party at each login. If this conflicts with your privacy or compliance requirements, use an offline database or keep geolocation off.
+
 ## Endpoints
 
-| Method | Path                | Purpose                                         | Success | Errors              |
-| ------ | ------------------- | ----------------------------------------------- | ------- | ------------------- |
-| `POST` | `/auth/login/`      | Issue an access token and a refresh token       | `200`   | `401`               |
-| `POST` | `/auth/refresh/`    | Refresh an access token                         | `200`   | `400`, `401`        |
-| `GET`  | `/auth/sessions/`   | List the caller's active sessions               | `200`   | `401`               |
-| `POST` | `/auth/logout/`     | Expire the caller's current session             | `200`   | `401`               |
-| `POST` | `/auth/logout/all/` | Expire **all** of the caller's active sessions  | `200`   | `401`               |
+| Method   | Path                    | Purpose                                         | Success | Errors              |
+| -------- | ----------------------- | ----------------------------------------------- | ------- | ------------------- |
+| `POST`   | `/auth/login/`          | Issue an access token and a refresh token       | `200`   | `401`               |
+| `POST`   | `/auth/refresh/`        | Refresh an access token                         | `200`   | `400`, `401`        |
+| `GET`    | `/auth/sessions/`       | List the caller's active sessions               | `200`   | `401`               |
+| `DELETE` | `/auth/sessions/{id}/`  | Revoke a single session                         | `200`   | `401`, `404`        |
+| `POST`   | `/auth/logout/`         | Expire the caller's current session             | `200`   | `401`               |
+| `POST`   | `/auth/logout/all/`     | Expire **all** of the caller's active sessions  | `200`   | `401`               |
 
 ### `POST /auth/login/`
 
@@ -181,6 +264,14 @@ Send the refresh token cookie that `/auth/login/` set.
 
 Refresh tokens are **rotated**. Every call to `/auth/refresh/` returns a new refresh token and retires the one you sent. Store the new token and use it for the next refresh. See [Refresh token rotation](#refresh-token-rotation).
 
+### `GET /auth/sessions/`
+
+Returns every active session for the authenticated user — one row per logged-in device. See [Device management](#device-management) for an example payload and the field semantics.
+
+### `DELETE /auth/sessions/{id}/`
+
+Revokes one session — the "sign out that device" action in a session list. If the id is not one of the caller's own active sessions, the response is `404 session_not_found`. Ids that belong to another user, expired ids, and unknown ids are deliberately indistinguishable. If the caller revokes its current session, the effect is the same as `logout/`. Under cookie transport, that includes clearing the refresh cookie.
+
 ## Error codes
 
 Every error returns a JSON body `{"error_code": "..."}` with a matching HTTP status. Use the codes to build client-side messages and translations.
@@ -194,6 +285,7 @@ Every error returns a JSON body `{"error_code": "..."}` with a matching HTTP sta
 | `invalid_token_type`    | `401`  | Sent a `refresh` token to a route protected by `JWTAuth`.        |
 | `invalid_user`          | `401`  | User attached to token no longer exists or is `is_active=False`. |
 | `session_not_found`     | `401`  | Session referenced by the token has been deleted.                |
+| `session_not_found`     | `404`  | Id passed to `DELETE /auth/sessions/{id}/` is not one of the caller's active sessions. |
 | `session_expired`       | `401`  | Session was logged out, or aged past `JWT_SESSION_EXPIRE_SECONDS`. |
 | `token_reuse_detected`  | `401`  | A retired refresh token was replayed. **The session is revoked.** |
 
@@ -208,8 +300,10 @@ This release tightens several auth behaviors. Read these notes before you upgrad
 - **`expired_at` is set on live sessions.** `expired_at__isnull=True` no longer means "active". Use `Session.objects.active()` in your own queries.
 - **Deleting a `User` now returns `session_not_found` on `/auth/refresh/`, not `invalid_user`.** The delete cascade removes the session first. Both codes are `401`.
 - **`JWT_ALGORITHM` is validated at startup.** `none`, typos, and asymmetric algorithms without the `crypto` extra now raise `ImproperlyConfigured` instead of failing later.
+- **Sessions now record the login `User-Agent`, and optionally a geolocation.** `GET /auth/sessions/` returns `user_agent`, `browser`, `location`, and `is_current` alongside the existing fields. Geolocation stays off until you set [`JWT_GEOLOCATION_PROVIDER`](#session-geolocation).
+- **New endpoint: `DELETE /auth/sessions/{id}/`** revokes a single session, so clients can offer per-device sign-out.
 
-Run `python manage.py migrate` to add the rotation columns.
+Run `python manage.py migrate` to add the rotation and device columns.
 
 ## Configuration
 
@@ -232,6 +326,7 @@ JWT_REFRESH_COOKIE_HTTPONLY = True
 JWT_REFRESH_COOKIE_SAMESITE = "Lax"  # "Lax", "Strict", or "None"
 JWT_REFRESH_COOKIE_PATH = "/auth/refresh/"
 JWT_REFRESH_COOKIE_DOMAIN = None
+JWT_GEOLOCATION_PROVIDER = None  # Dotted path to a geolocation callable; None disables lookups
 ```
 
 | Setting                              | Type                               | Description                                                                                     |
@@ -251,6 +346,7 @@ JWT_REFRESH_COOKIE_DOMAIN = None
 | `JWT_REFRESH_COOKIE_SAMESITE`        | `"Lax" \| "Strict" \| "None"` | Sets the cookie's `SameSite` policy.                                                           |
 | `JWT_REFRESH_COOKIE_PATH`            | `str`                              | Restricts the cookie to the refresh endpoint path.                                             |
 | `JWT_REFRESH_COOKIE_DOMAIN`          | `str \| None`                     | Optional cookie domain override.                                                               |
+| `JWT_GEOLOCATION_PROVIDER`           | `str \| None`                     | Dotted path to a callable `(ip: str) -> GeoLocation \| None` run once per login. `None` disables geolocation. See [Session geolocation](#session-geolocation). |
 
 ### Signing key length
 
@@ -387,7 +483,7 @@ The callable receives the raw `HttpRequest` and the parsed `LoginSchema` payload
 
 ## Session management
 
-The `Session` model has helpers for common auth tasks.
+The session list, per-device sign-out, and geolocation are covered in [Device management](#device-management). The `Session` model also has helpers for common auth tasks.
 
 ### Invalidate all sessions (e.g., on password change)
 
@@ -426,6 +522,7 @@ JWT Ninja deliberately leaves these tasks to your application:
 - **Serve over HTTPS.** Access tokens are bearer credentials. Anyone who observes one can use it until it expires.
 - **Keep `JWT_ACCESS_TOKEN_EXPIRE_SECONDS` short.** Every request checks the access token against the DB session, so revocation is quick. A short lifetime is still your backstop.
 - **Set a strong signing key.** See [Signing key length](#signing-key-length).
+- **Size your geolocation provider to your login volume.** The built-in `ipapi_co_geolocator` does a blocking HTTPS lookup per login and is rate-limited. Beyond light traffic, switch to an offline database. See [Session geolocation](#session-geolocation).
 
 ## Development
 

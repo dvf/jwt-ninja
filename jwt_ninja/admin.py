@@ -20,6 +20,8 @@ class SessionAdmin(admin.ModelAdmin):
         "updated_at",
         "expired_at",
         "ip_address",
+        "user_agent",
+        "location",
         "data",
     ]
     list_filter = ["created_at", "expired_at"]

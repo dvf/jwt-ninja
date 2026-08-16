@@ -15,8 +15,9 @@ from .errors import (
     JWTInvalidPayloadFormat,
     JWTInvalidTokenError,
 )
+from .geolocation import resolve_location
 from .models import Session
-from .request import get_client_ip
+from .request import get_client_ip, get_user_agent
 from .types import (
     ErrorResponseType,
     LoginSchema,
@@ -126,9 +127,13 @@ def login(request: HttpRequest, payload: LoginSchema) -> HttpResponse:
         raise APIError("invalid_credentials", 401)
 
     # Create a new DB-backed session for the User
+    ip_address = get_client_ip(request)
+    location = resolve_location(ip_address)
     session = Session.create_session(
         user=user,
-        ip_address=get_client_ip(request),
+        ip_address=ip_address,
+        user_agent=get_user_agent(request),
+        location=location.model_dump() if location else None,
     )
 
     access_token, refresh_token = _issue_token_pair(user, session)
@@ -207,6 +212,33 @@ def new_refresh_token(request: HttpRequest, payload: RefreshTokenSchema | None =
 )
 def list_active_sessions(request: AuthedRequest):
     return request.auth.user.jwt_sessions.active()
+
+
+@router.delete(
+    "sessions/{session_id}/",
+    summary="Revoke a session",
+    description="Log out a single session by id. Revoking the current session is equivalent to `logout/`.",
+    response={
+        200: None,
+        404: ErrorResponseType[Literal["session_not_found"]],
+    },
+    auth=JWTAuth(),
+)
+def revoke_session(request: AuthedRequest, session_id: str) -> HttpResponse:
+    # Scoping the lookup to the caller's own active sessions makes another
+    # user's session id indistinguishable from one that never existed.
+    try:
+        session = request.auth.user.jwt_sessions.active().get(id=session_id)
+    except Session.DoesNotExist:
+        raise APIError("session_not_found", http_status_code=404)
+
+    session.invalidate_session()
+
+    response = HttpResponse(status=200)
+    revoked_current = session.id == request.auth.session.id
+    if revoked_current and jwt_settings_module.jwt_settings.REFRESH_TOKEN_TRANSPORT in {"cookie", "both"}:
+        _delete_refresh_cookie(response)
+    return response
 
 
 @router.post(

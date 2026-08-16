@@ -1,4 +1,5 @@
 import warnings
+from collections.abc import Callable
 from typing import Literal
 
 import jwt.algorithms
@@ -9,7 +10,7 @@ from django.utils.module_loading import import_string
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from .types import JWTPayload
+from .types import GeoLocation, JWTPayload
 
 
 class InsecureJWTKeyWarning(UserWarning):
@@ -112,6 +113,9 @@ class JWTSettings(BaseSettings):
     REFRESH_TOKEN_REUSE_GRACE_SECONDS: int = Field(
         default_factory=lambda: getattr(settings, "JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS", 30)
     )
+    GEOLOCATION_PROVIDER: str | None = Field(
+        default_factory=lambda: getattr(settings, "JWT_GEOLOCATION_PROVIDER", None)
+    )
 
     model_config = SettingsConfigDict(
         env_prefix="JWT_",
@@ -119,6 +123,7 @@ class JWTSettings(BaseSettings):
     )
 
     _JWT_PAYLOAD_CLASS: type[JWTPayload]
+    _GEOLOCATION_PROVIDER: Callable[[str], GeoLocation | None] | None
 
     def __init__(self):
         # Pull values from Django settings so that JWT_* settings in settings.py
@@ -131,12 +136,17 @@ class JWTSettings(BaseSettings):
                 django_overrides[field_name] = getattr(settings, django_key)
         super().__init__(**django_overrides)
         self._JWT_PAYLOAD_CLASS = import_string(self.JWT_PAYLOAD_CLASS)
+        self._GEOLOCATION_PROVIDER = import_string(self.GEOLOCATION_PROVIDER) if self.GEOLOCATION_PROVIDER else None
         _validate_algorithm(self.ALGORITHM)
         _warn_if_key_too_short(self.SECRET_KEY, self.ALGORITHM)
 
     @property
     def payload_class(self) -> type[JWTPayload]:
         return self._JWT_PAYLOAD_CLASS
+
+    @property
+    def geolocation_provider(self) -> Callable[[str], GeoLocation | None] | None:
+        return self._GEOLOCATION_PROVIDER
 
 
 jwt_settings = JWTSettings()
@@ -154,6 +164,7 @@ def reload_jwt_settings(*args, **kwargs):
     for field_name in type(jwt_settings).model_fields:
         setattr(jwt_settings, field_name, getattr(fresh, field_name))
     jwt_settings._JWT_PAYLOAD_CLASS = fresh._JWT_PAYLOAD_CLASS
+    jwt_settings._GEOLOCATION_PROVIDER = fresh._GEOLOCATION_PROVIDER
 
 
 setting_changed.connect(reload_jwt_settings)

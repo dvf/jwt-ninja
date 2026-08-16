@@ -1,11 +1,12 @@
 from .cryptography import decode_jwt, generate_jwt
 from .errors import APIError
-from .types import JWTPayload
+from .types import GeoLocation, JWTPayload
 
 __all__ = [
     "APIError",
     "AuthDetails",
     "AuthedRequest",
+    "GeoLocation",
     "JWTAuth",
     "JWTPayload",
     "decode_jwt",

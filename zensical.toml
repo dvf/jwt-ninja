@@ -16,7 +16,7 @@ nav = [
     { "Getting started" = "guide/getting-started.md" },
     { "Protecting your views" = "guide/protecting-views.md" },
     { "Refresh tokens" = "guide/refresh-tokens.md" },
-    { "Session management" = "guide/sessions.md" },
+    { "Sessions & devices" = "guide/sessions.md" },
     { "Custom claims" = "guide/custom-claims.md" },
     { "Custom authenticator" = "guide/custom-authenticator.md" },
     { "Deployment checklist" = "guide/deployment.md" },
@@ -32,7 +32,6 @@ nav = [
 
 [project.theme]
 language = "en"
-logo = "assets/mark.png"
 favicon = "assets/mark.png"
 features = [
   "announce.dismiss",
@@ -56,6 +55,9 @@ features = [
   "search.highlight",
   "toc.follow",
 ]
+
+[project.theme.icon]
+logo = "lucide/shield-check"
 
 [project.theme.font]
 text = "Inter"

@@ -4,8 +4,7 @@ hide:
   - navigation
 ---
 
-![JWT Ninja](assets/logo-light.png#only-light){ width="340" }
-![JWT Ninja](assets/logo-dark.png#only-dark){ width="340" }
+# ![JWT Ninja](assets/logo-light.png#only-light){ width="340" }![JWT Ninja](assets/logo-dark.png#only-dark){ width="340" }
 
 *A session-backed, fully-typed authentication library for **[Django Ninja](https://django-ninja.dev/)**, powered by **[PyJWT](https://pyjwt.readthedocs.io/)**.*
 
@@ -20,7 +19,13 @@ hide:
 
     ---
 
-    Every token maps to a `Session` row in the database. You get token-based auth plus revocation, device listing, and per-session state.
+    Every token maps to a `Session` row in the database. You get token-based auth plus instant revocation and per-session state.
+
+-   :lucide-monitor-smartphone:{ .lg .middle } **Built-in device management**
+
+    ---
+
+    Each user gets a session list with IP address, browser, and location. Users can sign out one device or all devices. Geolocation providers are pluggable, and a free one is included.
 
 -   :lucide-braces:{ .lg .middle } **Fully typed**
 
@@ -38,7 +43,7 @@ hide:
 
     ---
 
-    Five auth endpoints, a Django admin page, a pluggable payload class for custom claims, and a pluggable authenticator for non-password login flows.
+    Six auth endpoints, a Django admin page, a pluggable payload class for custom claims, a pluggable authenticator for non-password login flows, and a pluggable geolocation provider for the session list.
 
 </div>
 
@@ -60,5 +65,22 @@ def profile(request: AuthedRequest):
     return {"username": user.username, "session_id": session.id}
 ```
 
+Give every user a "where am I signed in?" screen with `GET /auth/sessions/`:
+
+```json
+[
+  {
+    "id": "8dKt2…",
+    "ip_address": "203.0.113.42",
+    "browser": "Chrome on macOS",
+    "location": { "city": "Amsterdam", "country": "Netherlands" },
+    "is_current": true
+  }
+]
+```
+
+Users sign out one device with `DELETE /auth/sessions/{id}/`, or all devices with `POST /auth/logout/all/`.
+
 [Get started](guide/getting-started.md){ .md-button .md-button--primary }
+[Sessions & devices](guide/sessions.md){ .md-button }
 [Endpoint reference](reference/endpoints.md){ .md-button }
