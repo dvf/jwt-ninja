@@ -59,6 +59,20 @@ class Session(models.Model):
         null=True,
     )
 
+    user_agent = models.TextField(
+        blank=True,
+        default="",
+    )
+
+    # Where `ip_address` appeared to be at login, as returned by the
+    # configured JWT_GEOLOCATION_PROVIDER. Shaped like types.GeoLocation.
+    # Null when no provider is configured or the lookup failed.
+    location = models.JSONField(
+        null=True,
+        blank=True,
+        encoder=DjangoJSONEncoder,
+    )
+
     user = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
@@ -152,7 +166,13 @@ class Session(models.Model):
         ).delete()
 
     @classmethod
-    def create_session(cls, user, ip_address: str | None) -> "Session":
+    def create_session(
+        cls,
+        user,
+        ip_address: str | None,
+        user_agent: str = "",
+        location: dict | None = None,
+    ) -> "Session":
         """
         Create a new session from a request.
 
@@ -168,4 +188,6 @@ class Session(models.Model):
             updated_at=current_utc,
             expired_at=current_utc + timedelta(seconds=max_age) if max_age > 0 else None,
             ip_address=ip_address,
+            user_agent=(user_agent or "")[:512],
+            location=location,
         )

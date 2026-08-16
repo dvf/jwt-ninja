@@ -62,11 +62,12 @@ api.add_router("auth/", auth_router)
 api.add_exception_handler(APIError, error_handler)
 ```
 
-This gives you `/auth/login/`, `/auth/refresh/`, `/auth/sessions/`, `/auth/logout/`, and `/auth/logout/all/`.
+This gives you `/auth/login/`, `/auth/refresh/`, `/auth/sessions/`, `/auth/sessions/{id}/`, `/auth/logout/`, and `/auth/logout/all/`.
 
 ## Next steps
 
 - [Protect your views](protecting-views.md) with `JWTAuth`.
+- Give users a session list with per-device sign-out: [Sessions & devices](sessions.md).
 - Read the [endpoint reference](../reference/endpoints.md).
 - Review the [configuration options](../reference/configuration.md).
 - Before you go live, walk the [deployment checklist](deployment.md).

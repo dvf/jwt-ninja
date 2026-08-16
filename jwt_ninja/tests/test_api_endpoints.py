@@ -10,9 +10,19 @@ from django.utils import timezone
 
 from ..cryptography import generate_jwt
 from ..models import Session
-from ..types import JWTPayload
+from ..types import GeoLocation, JWTPayload
 
 User = get_user_model()
+
+CHROME_MAC_UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+)
+
+
+def fake_geolocator(ip_address: str) -> GeoLocation:
+    """Referenced by dotted path in JWT_GEOLOCATION_PROVIDER override tests."""
+    return GeoLocation(city="Reykjavik", country="Iceland", country_code="IS")
 
 
 @pytest.mark.django_db
@@ -421,6 +431,172 @@ def test_list_sessions_returns_only_active_sessions_for_current_user(
     json_response = response.json()
     assert len(json_response) == 1
     assert json_response[0]["id"] == user_session.id
+
+
+@pytest.mark.django_db
+def test_login_records_user_agent(ninja_client, test_user):
+    response = ninja_client.post(
+        "/auth/login/",
+        json={"username": "dan", "password": "dan"},
+        headers={"User-Agent": CHROME_MAC_UA},
+    )
+
+    assert response.status_code == 200
+    session = test_user.jwt_sessions.get()
+    assert session.user_agent == CHROME_MAC_UA
+    # No geolocation provider is configured by default, so no location is stored.
+    assert session.location is None
+
+
+@pytest.mark.django_db
+@override_settings(JWT_GEOLOCATION_PROVIDER="jwt_ninja.tests.test_api_endpoints.fake_geolocator")
+def test_login_records_location_with_configured_provider(ninja_client, test_user):
+    response = ninja_client.post(
+        "/auth/login/",
+        json={"username": "dan", "password": "dan"},
+        META={"REMOTE_ADDR": "8.8.8.8"},
+    )
+
+    assert response.status_code == 200
+    session = test_user.jwt_sessions.get()
+    assert session.ip_address == "8.8.8.8"
+    assert session.location == {
+        "city": "Reykjavik",
+        "region": None,
+        "country": "Iceland",
+        "country_code": "IS",
+        "latitude": None,
+        "longitude": None,
+    }
+
+
+@pytest.mark.django_db
+def test_list_sessions_includes_client_details(ninja_client, access_token, test_user, user_session):
+    other_session = Session.create_session(
+        user=test_user,
+        ip_address="8.8.8.8",
+        user_agent=CHROME_MAC_UA,
+        location={"city": "Reykjavik", "country": "Iceland", "country_code": "IS"},
+    )
+
+    response = ninja_client.get(
+        "/auth/sessions/",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+        },
+    )
+
+    assert response.status_code == 200
+    sessions = {row["id"]: row for row in response.json()}
+    assert set(sessions) == {user_session.id, other_session.id}
+
+    current = sessions[user_session.id]
+    assert current["is_current"] is True
+    assert current["user_agent"] is None
+    assert current["browser"] is None
+    assert current["location"] is None
+
+    other = sessions[other_session.id]
+    assert other["is_current"] is False
+    assert other["ip_address"] == "8.8.8.8"
+    assert other["user_agent"] == CHROME_MAC_UA
+    assert other["browser"] == "Chrome on macOS"
+    assert other["location"]["city"] == "Reykjavik"
+    assert other["location"]["country"] == "Iceland"
+    assert other["location"]["country_code"] == "IS"
+
+
+@pytest.mark.django_db
+def test_revoke_session(ninja_client, access_token, test_user, user_session):
+    other_session = Session.create_session(user=test_user, ip_address="10.0.0.5")
+
+    response = ninja_client.delete(
+        f"/auth/sessions/{other_session.id}/",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+        },
+    )
+
+    assert response.status_code == 200
+
+    other_session.refresh_from_db()
+    user_session.refresh_from_db()
+    assert other_session.is_expired
+    # The session the request rode on is untouched.
+    assert not user_session.is_expired
+
+
+@pytest.mark.django_db
+def test_revoke_session_of_other_user_is_not_found(ninja_client, access_token, user_session):
+    other_user = User.objects.create_user(
+        email="other@example.com",
+        username="other",
+        password="other",
+    )
+    other_session = Session.create_session(user=other_user, ip_address="10.0.0.6")
+
+    response = ninja_client.delete(
+        f"/auth/sessions/{other_session.id}/",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error_code"] == "session_not_found"
+
+    other_session.refresh_from_db()
+    assert not other_session.is_expired
+
+
+@pytest.mark.django_db
+def test_revoke_unknown_session_is_not_found(ninja_client, access_token):
+    response = ninja_client.delete(
+        "/auth/sessions/does-not-exist/",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error_code"] == "session_not_found"
+
+
+@pytest.mark.django_db
+def test_revoke_already_revoked_session_is_not_found(ninja_client, access_token, test_user):
+    revoked = Session.create_session(user=test_user, ip_address="10.0.0.7")
+    revoked.invalidate_session()
+
+    response = ninja_client.delete(
+        f"/auth/sessions/{revoked.id}/",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error_code"] == "session_not_found"
+
+
+@pytest.mark.django_db
+@override_settings(
+    JWT_REFRESH_TOKEN_TRANSPORT="cookie",
+    JWT_REFRESH_COOKIE_SECURE=False,
+)
+def test_revoke_current_session_clears_refresh_cookie_in_cookie_mode(ninja_client, access_token, user_session):
+    response = ninja_client.delete(
+        f"/auth/sessions/{user_session.id}/",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+        },
+    )
+
+    user_session.refresh_from_db()
+
+    assert response.status_code == 200
+    assert user_session.is_expired
+    assert response.cookies["refresh_token"].value == ""
+    assert response.cookies["refresh_token"]["max-age"] == 0
 
 
 @pytest.mark.django_db

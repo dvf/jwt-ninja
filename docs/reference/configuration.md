@@ -22,6 +22,7 @@ JWT_REFRESH_COOKIE_HTTPONLY = True
 JWT_REFRESH_COOKIE_SAMESITE = "Lax"  # "Lax", "Strict", or "None"
 JWT_REFRESH_COOKIE_PATH = "/auth/refresh/"
 JWT_REFRESH_COOKIE_DOMAIN = None
+JWT_GEOLOCATION_PROVIDER = None  # Dotted path to a geolocation callable; None disables lookups
 ```
 
 | Setting                              | Type                               | Description                                                                                     |
@@ -41,6 +42,7 @@ JWT_REFRESH_COOKIE_DOMAIN = None
 | `JWT_REFRESH_COOKIE_SAMESITE`        | `"Lax" \| "Strict" \| "None"` | Sets the cookie's `SameSite` policy.                                                           |
 | `JWT_REFRESH_COOKIE_PATH`            | `str`                              | Restricts the cookie to the refresh endpoint path.                                             |
 | `JWT_REFRESH_COOKIE_DOMAIN`          | `str \| None`                     | Optional cookie domain override.                                                               |
+| `JWT_GEOLOCATION_PROVIDER`           | `str \| None`                     | Dotted path to a callable `(ip: str) -> GeoLocation \| None` run once per login. `None` disables geolocation. See [Session geolocation](../guide/sessions.md#session-geolocation). |
 
 ## Signing key length
 
