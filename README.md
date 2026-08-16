@@ -15,6 +15,8 @@
 [![License](https://img.shields.io/github/license/dvf/jwt-ninja)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/)
 
+**[Documentation](https://dvf.github.io/jwt-ninja/)** · **[PyPI](https://pypi.org/project/jwtninja/)** · **[Changelog](https://github.com/dvf/jwt-ninja/releases)**
+
 > **Contributions are welcome.** Submit a PR.
 
 ---

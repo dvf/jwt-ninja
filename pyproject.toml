@@ -57,6 +57,9 @@ dev = [
     "pyrefly>=0.0.14",
     "ruff>=0.16.2",
 ]
+docs = [
+    "zensical>=0.0.54",
+]
 
 [tool.ruff]
 exclude = [
@@ -86,7 +89,7 @@ ignore = [
 [project.urls]
 Homepage = "https://github.com/dvf/jwt-ninja"
 Repository = "https://github.com/dvf/jwt-ninja"
-Documentation = "https://github.com/dvf/jwt-ninja#readme"
+Documentation = "https://dvf.github.io/jwt-ninja/"
 Changelog = "https://github.com/dvf/jwt-ninja/releases"
 
 [tool.isort]
