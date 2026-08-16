@@ -4,16 +4,12 @@
   <img alt="JWT Ninja Logo" src="https://github.com/user-attachments/assets/fe969f21-3986-4bd4-b75c-96e4e8bdf1c8" />
 </picture>
 
-<br/>
-
-# JWT Ninja
-
-*A session-backed, fully-typed authentication library for **[Django Ninja](https://django-ninja.dev/)**, powered by **[PyJWT](https://pyjwt.readthedocs.io/)**.*
-
 [![PyPI](https://img.shields.io/pypi/v/jwtninja.svg)](https://pypi.python.org/pypi/jwtninja)
 [![CI Status](https://github.com/dvf/jwt-ninja/actions/workflows/check-and-test.yml/badge.svg)](https://github.com/dvf/jwt-ninja/actions/workflows/check-and-test.yml)
 [![License](https://img.shields.io/github/license/dvf/jwt-ninja)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/)
+
+*A session-backed, fully-typed authentication library for **[Django Ninja](https://django-ninja.dev/)**, powered by **[PyJWT](https://pyjwt.readthedocs.io/)**.*
 
 **[Documentation](https://dvf.github.io/jwt-ninja/)** · **[PyPI](https://pypi.org/project/jwtninja/)** · **[Changelog](https://github.com/dvf/jwt-ninja/releases)**
 
