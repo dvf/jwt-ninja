@@ -188,6 +188,6 @@ class Session(models.Model):
             updated_at=current_utc,
             expired_at=current_utc + timedelta(seconds=max_age) if max_age > 0 else None,
             ip_address=ip_address,
-            user_agent=user_agent,
+            user_agent=(user_agent or "")[:512],
             location=location,
         )
