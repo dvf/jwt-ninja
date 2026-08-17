@@ -4,52 +4,32 @@ icon: lucide/refresh-cw
 
 # Refresh tokens
 
-JWT Ninja delivers refresh tokens over three transports and rotates them on every use.
+## Transport and browser CSRF
 
-## Transport
+- **`body`** (default): login returns the refresh token and refresh accepts it in JSON. CSRF is not required.
+- **`cookie`**: the token is an HttpOnly cookie. Login and refresh require standard Django CSRF validation.
+- **`both`**: the token is returned both ways. CSRF is still mandatory; supplying a body token does not bypass it.
 
-Set `JWT_REFRESH_TOKEN_TRANSPORT` to one of three modes:
+Login and refresh accept only `application/json` (parameters allowed) or `application/*+json`. Form, `text/plain`, and missing content types return `415 unsupported_media_type` before body parsing. Cookie refresh clients must send `{}` as the JSON body.
 
-- **`"body"`** *(default)* — `login/` returns `refresh_token` in JSON, and `refresh/` expects it in the request body.
-- **`"cookie"`** — `login/` sets the refresh token in an **HttpOnly cookie**, and `refresh/` reads it from that cookie.
-- **`"both"`** — `login/` returns the refresh token in JSON **and** sets the cookie. `refresh/` accepts either the request body or the cookie.
+Browser flow:
 
-Example browser-oriented configuration:
+1. `GET /auth/csrf/`; retain the Django CSRF cookie and read `csrf_token` from the response.
+2. Send that masked value in `X-CSRFToken` on `POST /auth/login/` and `POST /auth/refresh/`.
+3. Continue sending credentials/cookies according to the selected transport.
 
-```python title="settings.py"
-JWT_REFRESH_TOKEN_TRANSPORT = "cookie"
-JWT_REFRESH_COOKIE_SECURE = True
-JWT_REFRESH_COOKIE_HTTPONLY = True
-JWT_REFRESH_COOKIE_SAMESITE = "Lax"
-JWT_REFRESH_COOKIE_PATH = "/auth/refresh/"
-```
+Django's trusted-origin and HTTPS CSRF rules apply. `SameSite=None` is rejected unless refresh cookies are both Secure and HttpOnly.
 
-In `cookie` mode:
+## Strict atomic rotation
 
-- `POST /auth/login/` returns the `access_token` in JSON and sets the refresh token cookie.
-- `POST /auth/refresh/` reads the refresh token from the cookie.
-- `POST /auth/logout/` and `POST /auth/logout/all/` clear the refresh token cookie.
+Every refresh token has a `jti`. A refresh atomically changes the same session row only when the session id, user id, live expiry, security stamp, and exact current `jti` all match. There is no grace window and `JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS` must be `0`. Previous JTIs are never authorized.
 
-!!! warning "Security note"
+A concurrent consume or replay returns `401 token_reuse_detected` and revokes the entire token family. Revocation commits before the error is raised. Consequently, even a replacement token returned to a race winner becomes unusable after the replay is detected.
 
-    HttpOnly cookies reduce refresh-token exposure to JavaScript, but cookie-based auth flows are still subject to CSRF considerations. For browser deployments, prefer `Secure=True`, keep refresh endpoints as `POST`, and choose a `SameSite` policy that fits your application. `SameSite="None"` removes the browser's cross-site protection on the refresh endpoint. If you set it, add your own CSRF defense.
+!!! warning "Ambiguous refresh outcome"
 
-## Rotation
+    If the connection drops after sending a refresh, do not retry the old token. The server may have consumed it successfully; retrying can revoke the session. Discard the uncertain token state and require reauthentication.
 
-Every call to `/auth/refresh/` mints a **new** refresh token and retires the one you presented. Each refresh token carries a `jti` claim, and the session row records the only `jti` it currently accepts.
+Legacy NULL-JTI tokens are not adopted. Migration to the security-stamped session model intentionally requires all existing users to authenticate again.
 
-The server treats a retired token as evidence that the token leaked, and **revokes the whole session**. The response is `401 token_reuse_detected`. This logs out the legitimate holder along with the attacker, which is the intended outcome once a token is known to be copied.
-
-!!! tip "What clients must do"
-
-    In `body` mode, persist the `refresh_token` from every `/auth/refresh/` response and send that one next time. Replaying a stored old token will log the user out. In `cookie` mode this is automatic, because the server sets a replacement cookie each time.
-
-### The grace window
-
-A dropped connection can lose the refresh response. The client then retries with a token the server has already rotated past. To keep that retry from revoking a real session, the previous token stays valid for `JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS` (default `30`) after rotation.
-
-Set it to `0` for strict single-use tokens. That choice logs out users whose refresh request gets retried.
-
-### Upgrading existing deployments
-
-Refresh tokens issued before rotation existed carry no `jti`, and their sessions have no recorded `jti` either. The server accepts such a token **once** and adopts the session into rotation, so upgrading does not log out your whole user base. After that first use, the old token is retired like any other.
+Refresh is limited to 30 requests/minute per trusted client identity by default and is denied before decode when over limit. Tune with `JWT_REFRESH_THROTTLE_RATE`.

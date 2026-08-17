@@ -12,7 +12,7 @@ from django.core.exceptions import ImproperlyConfigured
 from django.test import RequestFactory, override_settings
 from django.utils import timezone
 
-from ..cryptography import decode_jwt, generate_jwt
+from ..cryptography import generate_jwt
 from ..errors import JWTInvalidTokenError
 from ..models import Session
 from ..request import get_client_ip
@@ -116,21 +116,10 @@ def test_replaying_a_rotated_token_revokes_the_session(ninja_client, refresh_tok
     assert followup.status_code == 401
 
 
-@pytest.mark.django_db
-@override_settings(JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS=30)
-def test_grace_window_tolerates_a_retried_refresh(ninja_client, refresh_token, user_session):
-    """
-    A client retrying a request whose response it never received must not be
-    mistaken for an attacker.
-    """
-    first = ninja_client.post("/auth/refresh/", json={"refresh_token": refresh_token})
-    assert first.status_code == 200
-
-    retry = ninja_client.post("/auth/refresh/", json={"refresh_token": refresh_token})
-
-    assert retry.status_code == 200
-    user_session.refresh_from_db()
-    assert user_session.is_expired is False
+def test_positive_grace_window_is_rejected():
+    with pytest.raises(ImproperlyConfigured, match="must be 0"):
+        with override_settings(JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS=30):
+            pass
 
 
 @pytest.mark.django_db
@@ -138,7 +127,7 @@ def test_unknown_jti_revokes_the_session(ninja_client, user_session, test_user, 
     """
     A well-signed refresh token naming a jti this session never issued.
     """
-    user_session.rotate_refresh_jti()
+    user_session.initialize_refresh_jti()
     token = generate_jwt(
         JWTPayload(
             user_id=test_user.id,
@@ -158,20 +147,13 @@ def test_unknown_jti_revokes_the_session(ninja_client, user_session, test_user, 
 
 
 @pytest.mark.django_db
-def test_pre_rotation_refresh_token_is_adopted_once(ninja_client, legacy_refresh_token, user_session):
-    """
-    Tokens issued before rotation existed carry no `jti`. They are honoured
-    once so upgrading doesn't log every user out, then superseded.
-    """
-    first = ninja_client.post("/auth/refresh/", json={"refresh_token": legacy_refresh_token})
-    assert first.status_code == 200
+def test_pre_rotation_refresh_token_is_rejected_without_adoption(ninja_client, legacy_refresh_token, user_session):
+    response = ninja_client.post("/auth/refresh/", json={"refresh_token": legacy_refresh_token})
 
+    assert response.status_code == 401
+    assert response.json()["error_code"] == "invalid_token"
     user_session.refresh_from_db()
-    assert user_session.refresh_jti is not None
-
-    replay = ninja_client.post("/auth/refresh/", json={"refresh_token": legacy_refresh_token})
-    assert replay.status_code == 401
-    assert replay.json()["error_code"] == "token_reuse_detected"
+    assert user_session.refresh_jti is None
 
 
 @pytest.mark.django_db
@@ -277,6 +259,7 @@ def test_login_survives_a_malformed_forwarded_header(ninja_client, test_user):
 
 
 @pytest.mark.django_db
+@override_settings(JWT_TRUSTED_PROXY_CIDRS=["127.0.0.0/8", "10.0.0.0/8"])
 def test_login_records_a_forwarded_ip_when_it_is_valid(ninja_client, test_user):
     response = ninja_client.post(
         "/auth/login/",
@@ -297,7 +280,7 @@ def test_none_algorithm_is_rejected():
 
 
 def test_unknown_algorithm_is_rejected():
-    with pytest.raises(ImproperlyConfigured, match="not available"):
+    with pytest.raises(ImproperlyConfigured, match="unavailable"):
         with override_settings(JWT_ALGORITHM="HS1"):
             pass
 
@@ -311,26 +294,10 @@ def test_token_without_exp_is_rejected():
     class NoExpPayload(JWTPayload):
         exp: int | None = None
 
-    token = generate_jwt(
-        NoExpPayload(user_id=1, type="access", session_id="s", exp=None),
-    )
-
     with pytest.raises(JWTInvalidTokenError):
-        decode_jwt(token, NoExpPayload)
+        generate_jwt(NoExpPayload(user_id=1, type="access", session_id="s", exp=None))
 
 
-@pytest.mark.django_db
-def test_expired_access_token_is_rejected(ninja_client, test_user):
-    token = generate_jwt(
-        JWTPayload(
-            user_id=1,
-            type="access",
-            exp=int(time.time()) - 1,
-            session_id="whatever",
-        )
-    )
-
-    response = ninja_client.get("/auth/protected/", headers={"Authorization": f"Bearer {token}"})
-
-    assert response.status_code == 401
-    assert response.json()["error_code"] == "expired_token"
+def test_expired_access_token_is_not_generated():
+    with pytest.raises(JWTInvalidTokenError):
+        generate_jwt(JWTPayload(user_id=1, type="access", exp=int(time.time()) - 1, session_id="whatever"))

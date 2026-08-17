@@ -2,6 +2,7 @@ import time
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.utils import timezone
 from ninja import NinjaAPI
 from ninja.testing import TestClient
@@ -15,6 +16,11 @@ from ..models import Session
 from ..types import JWTPayload
 
 User = get_user_model()
+
+
+@pytest.fixture(autouse=True)
+def clear_auth_throttle_cache():
+    cache.clear()
 
 
 @pytest.fixture
@@ -32,7 +38,7 @@ def ninja_client() -> TestClient:
     api.api_operation(["GET"], "auth/protected/", auth=JWTAuth())(sample_view)
     api.exception_handler(APIError)(error_handler)
 
-    return TestClient(api)
+    return TestClient(api, headers={"Content-Type": "application/json"})
 
 
 @pytest.fixture
@@ -46,7 +52,8 @@ def test_user() -> User:
 
 @pytest.fixture
 def one_hour_from_now() -> int:
-    return int(time.time()) + 3600
+    # Access tokens are capped at the configured five-minute lifetime.
+    return int(time.time()) + 300
 
 
 @pytest.fixture
@@ -110,7 +117,7 @@ def refresh_token(test_user, user_session, seven_days_from_now) -> str:
     The session is rotated first so the token carries the `jti` the session
     currently accepts, matching what /auth/login/ hands out.
     """
-    jti = user_session.rotate_refresh_jti()
+    jti = user_session.initialize_refresh_jti()
     payload = JWTPayload(
         user_id=test_user.id,
         type="refresh",

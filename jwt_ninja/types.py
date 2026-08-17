@@ -10,10 +10,13 @@ from .request import summarize_user_agent
 class JWTPayload(BaseModel):
     type: Literal["access", "refresh"]
     exp: int
+    # These registered claims are injected by generate_jwt. Keeping defaults
+    # lets custom payload subclasses continue to construct domain claims only.
+    iss: str | None = None
+    aud: str | None = None
+    iat: int | None = None
+    nbf: int | None = None
 
-    # Identifies a specific refresh token so it can be rotated and replays
-    # detected. Absent on access tokens, and on refresh tokens issued before
-    # rotation was introduced.
     jti: str | None = None
 
     # Custom claims
@@ -22,8 +25,8 @@ class JWTPayload(BaseModel):
 
 
 class LoginSchema(BaseModel):
-    username: str
-    password: str
+    username: str = Field(min_length=1, max_length=1024)
+    password: str = Field(min_length=1, max_length=65536)
 
 
 class TokenSchema(BaseModel):
@@ -32,7 +35,7 @@ class TokenSchema(BaseModel):
 
 
 class RefreshTokenSchema(BaseModel):
-    refresh_token: str | None = None
+    refresh_token: str | None = Field(default=None, max_length=65536)
 
 
 E = TypeVar("E", bound=str)
@@ -51,12 +54,12 @@ class GeoLocation(BaseModel):
     in how much they can resolve for a given address.
     """
 
-    city: str | None = None
-    region: str | None = None
-    country: str | None = None
-    country_code: str | None = None
-    latitude: float | None = None
-    longitude: float | None = None
+    city: str | None = Field(default=None, max_length=128)
+    region: str | None = Field(default=None, max_length=128)
+    country: str | None = Field(default=None, max_length=128)
+    country_code: str | None = Field(default=None, min_length=2, max_length=2)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
 
 
 class SessionResponse(Schema):

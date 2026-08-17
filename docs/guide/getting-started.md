@@ -20,7 +20,7 @@ JWT Ninja is a standard Django app. Install it, run migrations, and mount the ro
     pip install jwtninja
     ```
 
-Requires Python **3.12+** and Django **5.x**.
+Requires Python **3.12+** and Django **5.2.16 through 6.1** (`>=5.2.16,<6.2`).
 
 !!! info "Asymmetric algorithms"
 

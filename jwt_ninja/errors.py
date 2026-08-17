@@ -2,54 +2,25 @@ from typing import Literal
 
 
 class JWTError(Exception):
-    """Base class for JWT exceptions."""
-
-    def __init__(
-        self,
-        error_code: str,
-        error_friendly: str,
-        http_status_code: int,
-        **kwargs,
-    ):
+    def __init__(self, error_code: str, error_friendly: str, http_status_code: int, **kwargs):
         self.error_code = error_code
         self.error_friendly = error_friendly
         self.http_status_code = http_status_code
 
 
 class JWTExpiredError(JWTError):
-    """Exception raised when a JWT token has expired."""
-
     def __init__(self, **kwargs):
-        super().__init__(
-            error_code="expired_token",
-            error_friendly="Token has expired",
-            http_status_code=401,
-            **kwargs,
-        )
+        super().__init__("expired_token", "Token has expired", 401, **kwargs)
 
 
 class JWTInvalidTokenError(JWTError):
-    """Exception raised when a JWT token is invalid."""
-
     def __init__(self, **kwargs):
-        super().__init__(
-            error_code="invalid_token",
-            error_friendly="Token is invalid",
-            http_status_code=401,
-            **kwargs,
-        )
+        super().__init__("invalid_token", "Token is invalid", 401, **kwargs)
 
 
 class JWTInvalidPayloadFormat(JWTError):
-    """Exception raised when the JWT payload format is invalid."""
-
     def __init__(self, **kwargs):
-        super().__init__(
-            error_code="invalid_payload_format",
-            error_friendly="Payload could not be deserialized",
-            http_status_code=401,
-            **kwargs,
-        )
+        super().__init__("invalid_payload_format", "Payload could not be deserialized", 401, **kwargs)
 
 
 ErrorCode = Literal[
@@ -61,10 +32,14 @@ ErrorCode = Literal[
     "session_not_found",
     "session_expired",
     "token_reuse_detected",
+    "unsupported_media_type",
+    "csrf_failed",
+    "rate_limited",
 ]
 
 
 class APIError(Exception):
-    def __init__(self, error_code: ErrorCode, http_status_code: int):
+    def __init__(self, error_code: ErrorCode, http_status_code: int, *, retry_after: int | None = None):
         self.error_code = error_code
         self.http_status_code = http_status_code
+        self.retry_after = retry_after

@@ -43,7 +43,7 @@ hide:
 
     ---
 
-    Six auth endpoints, a Django admin page, a pluggable payload class for custom claims, a pluggable authenticator for non-password login flows, and a pluggable geolocation provider for the session list.
+    Seven auth endpoints, a Django admin page, a pluggable payload class for custom claims, a pluggable authenticator for non-password login flows, and a pluggable geolocation provider for the session list.
 
 </div>
 

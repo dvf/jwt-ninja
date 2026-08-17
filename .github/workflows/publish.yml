@@ -1,41 +1,205 @@
-name: Publish to PyPI (uv)
+name: Build and publish to PyPI
 
 on:
   release:
-    types: [published]            
+    types: [published]
+
+permissions: {}
+
+concurrency:
+  group: publish-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
 
 jobs:
-  build-and-publish:
+  build:
+    name: Build and verify distributions
     runs-on: ubuntu-latest
     permissions:
-      id-token: write             # OIDC → PyPI (token-free)
       contents: read
-
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout the released tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.release.tag_name }}
           fetch-depth: 0
           fetch-tags: true
-
-      - uses: actions/setup-python@v5
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: '3.12'
-
-      - name: Install uv
-        run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-
-      # --------------------------------------------------------------
-      # Build sdist & wheels – version is resolved automatically
-      # --------------------------------------------------------------
-      - name: Build distributions
-        run: uv build -o dist/            
-
-      # --------------------------------------------------------------
-      # Publish to PyPI with trusted publishing (OIDC)
-      # --------------------------------------------------------------
-      - name: Publish
-        run: uv publish dist/*            
+          python-version: "3.12"
+      - name: Set up uv without release cache
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          version: "0.9.18"
+          enable-cache: false
+      - name: Verify tag signature, ancestry, and locked build environment
         env:
-          UV_PUBLISH_NON_INTERACTIVE: "1" 
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          REPOSITORY: ${{ github.repository }}
+          AUTHORIZED_RELEASE_SIGNER: B997F7097601BA667004F07B230DB77DF266ACAA
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "$(git cat-file -t "refs/tags/$RELEASE_TAG")" = tag
+          tag_object_sha="$(git rev-parse "refs/tags/$RELEASE_TAG")"
+          test "$(git rev-list -n 1 "refs/tags/$RELEASE_TAG")" = "$(git rev-parse HEAD)"
+          git fetch --no-tags origin master:refs/remotes/origin/master
+          git merge-base --is-ancestor HEAD refs/remotes/origin/master
+          verified="$(gh api \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "/repos/$REPOSITORY/git/tags/$tag_object_sha" \
+            --jq '.verification.verified')"
+          test "$verified" = true
+
+          export GNUPGHOME="$(mktemp -d "$RUNNER_TEMP/jwtninja-gnupg.XXXXXX")"
+          chmod 700 "$GNUPGHOME"
+          gpg --batch --import .github/release-signing-key.asc
+          imported_fingerprint="$(
+            gpg --batch --with-colons --list-keys \
+              | awk -F: '$1 == "fpr" {print $10; exit}'
+          )"
+          test "$imported_fingerprint" = "$AUTHORIZED_RELEASE_SIGNER"
+          signature_status="$(git verify-tag --raw "refs/tags/$RELEASE_TAG" 2>&1)"
+          grep -Fq "[GNUPG:] VALIDSIG $AUTHORIZED_RELEASE_SIGNER " <<< "$signature_status"
+
+          uv lock --check
+          uv sync --frozen --only-group build --no-install-project
+      - name: Build once with locked build tooling
+        run: |
+          rm -rf dist
+          uv build --no-build-isolation --out-dir dist
+          uv run --frozen --only-group build twine check --strict dist/*
+      - name: Inspect metadata and wheel contents
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          python - <<'PY'
+          import email
+          import os
+          import tarfile
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          expected = os.environ["RELEASE_TAG"].removeprefix("v")
+          wheels = list(Path("dist").glob("*.whl"))
+          sdists = list(Path("dist").glob("*.tar.gz"))
+          assert len(wheels) == len(sdists) == 1, (wheels, sdists)
+          with ZipFile(wheels[0]) as archive:
+              names = archive.namelist()
+              assert not any(name.startswith("jwt_ninja/tests/") for name in names), names
+              metadata_name = next(name for name in names if name.endswith(".dist-info/METADATA"))
+              metadata = email.message_from_bytes(archive.read(metadata_name))
+          assert metadata["Name"] == "jwtninja", metadata["Name"]
+          assert metadata["Version"] == expected, (metadata["Version"], expected)
+          with tarfile.open(sdists[0]) as archive:
+              assert any("/jwt_ninja/tests/" in name for name in archive.getnames())
+          PY
+      - name: Smoke test the exact wheel outside the checkout
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          wheel="$(realpath dist/*.whl)"
+          smoke_dir="$(mktemp -d "$RUNNER_TEMP/jwtninja-smoke.XXXXXX")"
+          cd "$smoke_dir"
+          uv venv --python 3.12 .venv
+          uv pip install --python .venv/bin/python "$wheel"
+          .venv/bin/python - <<'PY'
+          import importlib.metadata
+          import os
+
+          from django.conf import settings
+
+          settings.configure(
+              SECRET_KEY="smoke-test-key-with-at-least-thirty-two-bytes-of-entropy",
+              JWT_SECRET_KEY="smoke-test-key-with-at-least-thirty-two-bytes-of-entropy",
+              JWT_ISSUER="smoke-test",
+              JWT_AUDIENCE="smoke-test",
+              INSTALLED_APPS=[],
+              DATABASES={"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}},
+          )
+          import django
+
+          django.setup()
+          import jwt_ninja
+
+          assert jwt_ninja
+          assert importlib.metadata.version("jwtninja") == os.environ["RELEASE_TAG"].removeprefix("v")
+          PY
+      - name: Generate artifact hashes
+        run: |
+          cd dist
+          sha256sum -- *.whl *.tar.gz > SHA256SUMS
+          sha256sum --check SHA256SUMS
+          cat SHA256SUMS
+      - name: Upload immutable distribution artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pypi-distributions-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 90
+
+  attest:
+    name: Attest exact distributions
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Download checked distributions
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: pypi-distributions-${{ github.sha }}
+          path: dist
+      - name: Verify artifact hashes and shape
+        run: |
+          set -euo pipefail
+          cd dist
+          test "$(find . -maxdepth 1 -name '*.whl' | wc -l)" -eq 1
+          test "$(find . -maxdepth 1 -name '*.tar.gz' | wc -l)" -eq 1
+          test "$(find . -maxdepth 1 -name 'SHA256SUMS' | wc -l)" -eq 1
+          test "$(find . -maxdepth 1 -type f | wc -l)" -eq 3
+          sha256sum --check SHA256SUMS
+      - name: Attest wheel and source distribution
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
+        with:
+          subject-path: |
+            dist/*.whl
+            dist/*.tar.gz
+
+  publish:
+    name: Publish exact distributions
+    needs: [build, attest]
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download checked distributions independently
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: pypi-distributions-${{ github.sha }}
+          path: dist
+      - name: Independently verify artifact hashes and shape
+        run: |
+          set -euo pipefail
+          cd dist
+          test "$(find . -maxdepth 1 -name '*.whl' | wc -l)" -eq 1
+          test "$(find . -maxdepth 1 -name '*.tar.gz' | wc -l)" -eq 1
+          test "$(find . -maxdepth 1 -name 'SHA256SUMS' | wc -l)" -eq 1
+          test "$(find . -maxdepth 1 -type f | wc -l)" -eq 3
+          sha256sum --check SHA256SUMS
+      - name: Set up uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          version: "0.9.18"
+          enable-cache: false
+      - name: Publish without rebuilding
+        run: uv publish --trusted-publishing always dist/*.whl dist/*.tar.gz

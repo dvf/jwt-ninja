@@ -23,7 +23,7 @@
 - **Built-in device management.** Each user gets a session list with IP address, browser, and location. Users can sign out one device or all devices. See [Device management](#device-management).
 - **Fully typed.** Protected routes receive an `AuthedRequest` with typed `request.auth.user` and `request.auth.session`. OpenAPI schemas include typed error responses.
 - **Three refresh-token transports.** JSON body, HttpOnly cookie, or both.
-- **Complete.** Six auth endpoints, a Django admin page, a pluggable payload class for custom claims, a pluggable authenticator for non-password login flows, and a pluggable geolocation provider for the session list.
+- **Complete.** Seven auth endpoints, a Django admin page, a pluggable payload class for custom claims, a pluggable authenticator for non-password login flows, and a pluggable geolocation provider for the session list.
 
 ---
 
@@ -58,7 +58,7 @@ uv add jwtninja
 pip install jwtninja
 ```
 
-Requires Python **3.12+** and Django **5.x**.
+Requires Python **3.12+** and Django **5.2.16 through 6.1** (`>=5.2.16,<6.2`).
 
 Asymmetric signing algorithms (`RS*`, `ES*`, `PS*`, `EdDSA`) need PyJWT's cryptography extra:
 
@@ -80,13 +80,22 @@ INSTALLED_APPS = [
 ]
 ```
 
-**2.** Run migrations to create the `Session` table:
+**2.** Configure a dedicated signing profile. These settings are required; Django's `SECRET_KEY` is never used as a fallback:
+
+```python
+JWT_SECRET_KEY = "a-separate-random-key-of-at-least-32-bytes"
+JWT_ISSUER = "https://auth.example.com"
+JWT_AUDIENCE = "example-api"
+# Asymmetric algorithms additionally require JWT_VERIFYING_KEY (the public key).
+```
+
+**3.** Run migrations to create the `Session` table:
 
 ```bash
 python manage.py migrate
 ```
 
-**3.** Mount the router on your Ninja API and register the error handler:
+**4.** Mount the router on your Ninja API and register the error handler:
 
 ```python
 from ninja import NinjaAPI
@@ -99,7 +108,7 @@ api.add_router("auth/", auth_router)
 api.add_exception_handler(APIError, error_handler)
 ```
 
-This gives you `/auth/login/`, `/auth/refresh/`, `/auth/sessions/`, `/auth/sessions/{id}/`, `/auth/logout/`, and `/auth/logout/all/`.
+This gives you `/auth/csrf/`, `/auth/login/`, `/auth/refresh/`, `/auth/sessions/`, `/auth/sessions/{id}/`, `/auth/logout/`, and `/auth/logout/all/`. All auth responses carry `Cache-Control: no-store` and `Pragma: no-cache`.
 
 ## Protecting your views
 
@@ -181,6 +190,7 @@ Geolocation is off by default. To fill the `location` field, point `JWT_GEOLOCAT
 ```python
 # settings.py
 JWT_GEOLOCATION_PROVIDER = "jwt_ninja.geolocation.ipapi_co_geolocator"
+JWT_GEOLOCATION_THIRD_PARTY_CONSENT = True  # explicit consent to send client IPs
 ```
 
 The provider runs one time per login, and JWT Ninja stores the result on the session. The list endpoint reads the stored value and does no lookups. If the provider fails, JWT Ninja logs the error and completes the login without a location. JWT Ninja does not send private, loopback, or other non-routable addresses to the provider.
@@ -215,6 +225,7 @@ JWT_GEOLOCATION_PROVIDER = "myapp.geo.geoip2_geolocator"
 
 | Method   | Path                    | Purpose                                         | Success | Errors              |
 | -------- | ----------------------- | ----------------------------------------------- | ------- | ------------------- |
+| `GET`    | `/auth/csrf/`           | Bootstrap Django CSRF for browser cookie flows  | `200`   | —                   |
 | `POST`   | `/auth/login/`          | Issue an access token and a refresh token       | `200`   | `401`               |
 | `POST`   | `/auth/refresh/`        | Refresh an access token                         | `200`   | `400`, `401`        |
 | `GET`    | `/auth/sessions/`       | List the caller's active sessions               | `200`   | `401`               |
@@ -250,7 +261,7 @@ In `cookie` mode, the server sets the refresh token as an HttpOnly cookie and do
 
 **Request in `cookie` mode**
 
-Send the refresh token cookie that `/auth/login/` set.
+Send `{}` as an `application/json` body with the refresh token cookie. Browser clients first call `GET /auth/csrf/`, then send the returned masked token in `X-CSRFToken` on both login and refresh. Cookie and `both` modes always enforce Django CSRF, even when a body token is present.
 
 **Response (`200`) in `body` mode**
 ```json
@@ -274,13 +285,13 @@ Revokes one session — the "sign out that device" action in a session list. If 
 
 ## Error codes
 
-Every error returns a JSON body `{"error_code": "..."}` with a matching HTTP status. Use the codes to build client-side messages and translations.
+Errors raised by JWT Ninja return `{"error_code": "..."}` with a matching HTTP status. Django Ninja owns request parsing, missing-authentication, and schema validation failures, which use its standard `detail` body with status 400, 401, or 422. Use `error_code` only when that field is present.
 
 | Code                    | Status | Meaning                                                          |
 | ----------------------- | ------ | ---------------------------------------------------------------- |
 | `invalid_credentials`   | `401`  | Username/password did not authenticate a user.                   |
 | `expired_token`         | `401`  | Token's `exp` claim is in the past.                              |
-| `invalid_token`         | `401`  | Token signature invalid, malformed, wrong secret, or missing.    |
+| `invalid_token`         | `401`  | Presented token signature invalid, malformed, or wrong secret.   |
 | `invalid_token_type`    | `400`  | Sent an `access` token to `/refresh/`.                           |
 | `invalid_token_type`    | `401`  | Sent a `refresh` token to a route protected by `JWTAuth`.        |
 | `invalid_user`          | `401`  | User attached to token no longer exists or is `is_active=False`. |
@@ -292,6 +303,9 @@ Every error returns a JSON body `{"error_code": "..."}` with a matching HTTP sta
 ## Upgrading
 
 This release tightens several auth behaviors. Read these notes before you upgrade an existing deployment:
+
+- **Runtime floor:** Python 3.12+ and Django >=5.2.16,<6.2 are required; Django 5.0 and 5.1 are no longer supported.
+- **Deploy atomically:** do not run mixed old/new authentication workers. Old workers issue legacy-profile tokens that new workers reject. Migrate and replace the worker fleet as one coordinated forced-reauthentication rollout.
 
 - **Refresh tokens no longer authenticate protected routes.** `JWTAuth` now requires `type == "access"`. Any other token type gets `401 invalid_token_type`. If a client sends its refresh token as a `Bearer` credential, it must switch to the access token.
 - **Refresh tokens rotate on every use.** `/auth/refresh/` now returns a new `refresh_token` with the access token and retires the one you sent. Clients in `body` mode must store and use the returned token. Clients in `cookie` mode need no change. See [Refresh token rotation](#refresh-token-rotation).
@@ -311,12 +325,22 @@ All settings are Django settings prefixed with `JWT_`. Defaults shown below:
 
 ```python
 # settings.py
-JWT_SECRET_KEY = SECRET_KEY  # Defaults to Django's SECRET_KEY
+JWT_SECRET_KEY = "required-dedicated-key-at-least-32-bytes"
+JWT_VERIFYING_KEY = None  # required and separate for asymmetric algorithms
 JWT_ALGORITHM = "HS256"
+JWT_ISSUER = "https://auth.example.com"  # required
+JWT_AUDIENCE = "example-api"  # required
+JWT_LEEWAY_SECONDS = 0
 JWT_ACCESS_TOKEN_EXPIRE_SECONDS = 300  # 5 minutes
 JWT_REFRESH_TOKEN_EXPIRE_SECONDS = 365 * 3600  # ~15 days
 JWT_SESSION_EXPIRE_SECONDS = 365 * 3600  # ~15 days (0 disables session expiry)
-JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS = 30  # 0 disables the grace window
+JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS = 0  # required; positive values fail startup
+JWT_LOGIN_THROTTLE_RATE = "5/min"  # None or "0" explicitly disables
+JWT_REFRESH_THROTTLE_RATE = "30/min"
+JWT_THROTTLE_CACHE_ALIAS = "default"
+JWT_MAX_ACTIVE_SESSIONS = 20
+JWT_TRUSTED_PROXY_CIDRS = []
+JWT_PERSIST_CLIENT_IP = True
 JWT_USER_LOGIN_AUTHENTICATOR = "jwt_ninja.authenticators.django_user_authenticator"
 JWT_PAYLOAD_CLASS = "jwt_ninja.types.JWTPayload"
 JWT_REFRESH_TOKEN_TRANSPORT = "body"  # "body", "cookie", or "both"
@@ -331,12 +355,12 @@ JWT_GEOLOCATION_PROVIDER = None  # Dotted path to a geolocation callable; None d
 
 | Setting                              | Type                               | Description                                                                                     |
 | ------------------------------------ | ---------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `JWT_SECRET_KEY`                     | `str`                              | Signing key. Defaults to Django's `SECRET_KEY`. See [Signing key length](#signing-key-length). |
+| `JWT_SECRET_KEY`                     | `str`                              | Required dedicated signing key; never defaults to Django's `SECRET_KEY`. See [Signing key length](#signing-key-length). |
 | `JWT_ALGORITHM`                      | `str`                              | PyJWT algorithm. Symmetric (`HS*`) or asymmetric (`RS*`, `ES*`, …). Validated at startup. `none` is rejected. Asymmetric algorithms require `pip install 'jwtninja[crypto]'`. |
 | `JWT_ACCESS_TOKEN_EXPIRE_SECONDS`    | `int`                              | Lifetime of the short-lived access token.                                                      |
 | `JWT_REFRESH_TOKEN_EXPIRE_SECONDS`   | `int`                              | Lifetime of the refresh token.                                                                 |
 | `JWT_SESSION_EXPIRE_SECONDS`         | `int`                              | Hard max age applied to a `Session` at creation. `0` means sessions live until logged out.     |
-| `JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS` | `int`                           | Seconds a just-rotated refresh token stays valid, so a retried request is not read as a replay. `0` enforces strict single use. |
+| `JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS` | `int`                           | Must be `0`. Refresh tokens are strictly single-use. |
 | `JWT_USER_LOGIN_AUTHENTICATOR`       | `str`                              | Dotted path to a callable `(request, payload) -> User \| None` used by `/auth/login/`.         |
 | `JWT_PAYLOAD_CLASS`                  | `str`                              | Dotted path to a `JWTPayload` subclass if you need custom claims.                              |
 | `JWT_REFRESH_TOKEN_TRANSPORT`        | `"body" \| "cookie" \| "both"` | Where refresh tokens are returned and read.                                                    |
@@ -358,9 +382,9 @@ For HMAC algorithms (the `HS*` family, including the default `HS256`), [RFC 7518
 | `HS384`   | 48 bytes         |
 | `HS512`   | 64 bytes         |
 
-Shorter keys are padded internally, which gives an attacker a smaller space to search. An attacker who recovers the key can forge tokens for any user.
+Shorter keys have less brute-force resistance than the JOSE profile requires. An attacker who recovers the key can forge tokens for any user. PEM, SSH, and JWK-looking asymmetric material is also rejected for HMAC profiles.
 
-**JWT Ninja emits `jwt_ninja.settings.InsecureJWTKeyWarning` at startup if your configured key is too short.** The warning appears in your app logs as soon as the settings load. PyJWT also emits its own `InsecureKeyLengthWarning` at encode/decode time.
+**JWT Ninja fails startup with `ImproperlyConfigured` if the configured key is too short.** RSA/PS keys below 2048 bits, public-only signing keys, mismatched key pairs, `none`, malformed keys, and incompatible algorithms also fail startup.
 
 Django's `get_random_secret_key()` already produces 50-character keys, so fresh projects are fine. Short keys typically appear in older projects or in manually set `JWT_SECRET_KEY` values. To generate a suitable key:
 
@@ -394,7 +418,7 @@ In `cookie` mode:
 - `POST /auth/refresh/` reads the refresh token from the cookie.
 - `POST /auth/logout/` and `POST /auth/logout/all/` clear the refresh token cookie.
 
-> **Security note:** HttpOnly cookies reduce refresh-token exposure to JavaScript, but cookie-based auth flows are still subject to CSRF considerations. For browser deployments, prefer `Secure=True`, keep refresh endpoints as `POST`, and choose a `SameSite` policy that fits your application. `SameSite="None"` removes the browser's cross-site protection on the refresh endpoint. If you set it, add your own CSRF defense.
+> **Security note:** Cookie and `both` modes enforce standard Django CSRF on login and refresh. Bootstrap with `GET /auth/csrf/`, retain the CSRF cookie, and send the returned masked token in `X-CSRFToken`. `SameSite="None"` is rejected unless both `Secure` and `HttpOnly` are enabled. Body mode does not require CSRF. Login and refresh accept only JSON media types (`application/json` or `application/*+json`).
 
 ## Refresh token rotation
 
@@ -404,15 +428,13 @@ The server treats a retired token as evidence that the token leaked, and **revok
 
 **What clients must do:** in `body` mode, persist the `refresh_token` from every `/auth/refresh/` response and send that one next time. Replaying a stored old token will log the user out. In `cookie` mode this is automatic, because the server sets a replacement cookie each time.
 
-### The grace window
+### Strict single use and ambiguous outcomes
 
-A dropped connection can lose the refresh response. The client then retries with a token the server has already rotated past. To keep that retry from revoking a real session, the previous token stays valid for `JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS` (default `30`) after rotation.
-
-Set it to `0` for strict single-use tokens. That choice logs out users whose refresh request gets retried.
+There is no grace window. Rotation atomically consumes exactly the current `jti`; concurrent or replayed use revokes the whole session and returns `401 token_reuse_detected`. If a client loses a successful refresh response, it must **not retry the old token**: the outcome is ambiguous and retrying can revoke the winner's replacement token. Reauthenticate instead.
 
 ### Upgrading existing deployments
 
-Refresh tokens issued before rotation existed carry no `jti`, and their sessions have no recorded `jti` either. The server accepts such a token **once** and adopts the session into rotation, so upgrading does not log out your whole user base. After that first use, the old token is retired like any other.
+Legacy refresh tokens or session rows with a NULL `jti` are not adopted. The new `security_stamp` migration also intentionally invalidates every existing session row. Plan a forced reauthentication after migration.
 
 ## Custom claims
 
@@ -433,7 +455,7 @@ class CustomJWTPayload(JWTPayload):
 JWT_PAYLOAD_CLASS = "myapp.auth.CustomJWTPayload"
 ```
 
-> **Note:** If you add required fields, you also need a custom authenticator (below) or a custom login endpoint that populates them.
+> **Note:** The built-in issuer supplies only base claims. Extra fields therefore need defaults, or you must use a custom token-issuing/login flow that constructs them. A custom authenticator alone returns only a user and cannot inject required claims.
 
 ### Overriding `user_id`
 
@@ -511,13 +533,15 @@ Session.purge_expired_sessions()
 
 `jwt_ninja` registers a read-only `SessionAdmin` at `/admin/jwt_ninja/session/`. Use it to see which users are logged in, and from where.
 
-> **On the recorded IP address:** `Session.ip_address` prefers the first entry in `X-Forwarded-For` and falls back to `REMOTE_ADDR`. Non-IP values are discarded rather than stored. Any client can send `X-Forwarded-For`, so the value is only trustworthy if a proxy you control overwrites the header on the way in. Treat it as a hint for support and debugging, not as evidence in an investigation.
+> **On the recorded IP address:** `X-Forwarded-For` is ignored unless `REMOTE_ADDR` belongs to `JWT_TRUSTED_PROXY_CIDRS`. The full bounded chain is validated and scanned right-to-left across trusted proxies. Configure only CIDRs you operate. Set `JWT_PERSIST_CLIENT_IP=False` to avoid storing addresses.
+
+A fixed-size HMAC fingerprint of `user.get_session_auth_hash()` is checked on every access and refresh. `set_password()`, bulk password-hash updates, NULL stamps, and callback failures therefore revoke the session without relying on signals; no raw historical password hash is stored.
 
 ## Deployment checklist
 
-JWT Ninja deliberately leaves these tasks to your application:
+JWT Ninja applies default cache-backed limits of 5 login requests/minute and 30 refreshes/minute per trusted client identity, plus a 20-active-session cap that atomically revokes the oldest session. `JWT_THROTTLE_CACHE_ALIAS` selects the Django cache. LocMemCache counters are per process, so production deployments need a shared atomic cache and/or an edge limiter for a global guarantee. Tune or explicitly disable the throttles only after a deployment review.
 
-- **Rate-limit `/auth/login/`.** Nothing in JWT Ninja throttles password guessing. Put a throttle in front of the endpoint: Django Ninja's built-in throttling, `django-ratelimit`, or your reverse proxy or WAF. Consider a rate limit on `/auth/refresh/` too.
+- **Set request limits at the edge.** Cap request bodies and headers in the reverse proxy/Django server as well as using JWT Ninja's token, credential, forwarded-chain, and session-id bounds.
 - **Schedule `Session.purge_expired_sessions()`.** Sessions carry a hard expiry, but nothing deletes the rows until you run the purge. See [Purge expired sessions](#purge-expired-sessions-eg-nightly-cron).
 - **Serve over HTTPS.** Access tokens are bearer credentials. Anyone who observes one can use it until it expires.
 - **Keep `JWT_ACCESS_TOKEN_EXPIRE_SECONDS` short.** Every request checks the access token against the DB session, so revocation is quick. A short lifetime is still your backstop.

@@ -126,6 +126,7 @@ def test_login_sets_refresh_token_cookie_in_cookie_mode(ninja_client, test_user)
 def test_refresh_token_reads_from_cookie_in_cookie_mode(ninja_client, refresh_token, test_user):
     response = ninja_client.post(
         "/auth/refresh/",
+        json={},
         COOKIES={"refresh_token": refresh_token},
     )
 

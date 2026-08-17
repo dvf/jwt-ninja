@@ -1,25 +1,23 @@
-import warnings
+import time
 
 import pytest
+from django.core.exceptions import ImproperlyConfigured
 from django.core.signals import setting_changed
 from django.test import override_settings
 
 import jwt_ninja.settings as jwt_ninja_settings
 
 from ..cryptography import decode_jwt, generate_jwt
-from ..settings import InsecureJWTKeyWarning, JWTSettings, jwt_settings
+from ..settings import jwt_settings
 from ..types import JWTPayload
 
 
-def test_jwt_setting_change_reloads_jwt_settings(monkeypatch):
+def test_jwt_setting_change_reloads_jwt_settings():
     assert jwt_ninja_settings.jwt_settings.ALGORITHM == "HS256"
 
-    monkeypatch.setenv("JWT_ALGORITHM", "HS512")
-    setting_changed.send(sender=None, setting="JWT_ALGORITHM", value="HS512", enter=True)
-    assert jwt_ninja_settings.jwt_settings.ALGORITHM == "HS512"
+    with override_settings(JWT_ALGORITHM="HS512", JWT_SECRET_KEY="x" * 64):
+        assert jwt_ninja_settings.jwt_settings.ALGORITHM == "HS512"
 
-    monkeypatch.delenv("JWT_ALGORITHM")
-    setting_changed.send(sender=None, setting="JWT_ALGORITHM", value=None, enter=False)
     assert jwt_ninja_settings.jwt_settings.ALGORITHM == "HS256"
 
 
@@ -108,7 +106,7 @@ def test_django_setting_jwt_algorithm_is_honored():
     """
     assert jwt_ninja_settings.jwt_settings.ALGORITHM == "HS256"
 
-    with override_settings(JWT_ALGORITHM="HS512"):
+    with override_settings(JWT_ALGORITHM="HS512", JWT_SECRET_KEY="x" * 64):
         assert jwt_ninja_settings.jwt_settings.ALGORITHM == "HS512"
 
     assert jwt_ninja_settings.jwt_settings.ALGORITHM == "HS256"
@@ -145,7 +143,7 @@ def test_str_user_id_subclass_roundtrips():
     payload = StrUserIdPayload(
         user_id="abc-123",
         type="access",
-        exp=9999999999,
+        exp=int(time.time()) + 300,
         session_id="sess-xyz",
     )
     assert isinstance(payload.user_id, str)
@@ -174,67 +172,44 @@ def test_str_user_id_subclass_rejects_int_input():
         )
 
 
-def test_short_hmac_key_emits_insecure_warning():
-    """
-    When the configured JWT signing key is shorter than RFC 7518 §3.2
-    requires for the selected HMAC algorithm, JWTSettings emits an
-    InsecureJWTKeyWarning at instantiation time so the user learns about
-    it at startup rather than only at first encode/decode.
-    """
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
+def test_short_hmac_key_fails_startup():
+    with pytest.raises(ImproperlyConfigured, match="at least 32 bytes"):
         with override_settings(JWT_SECRET_KEY="too-short", JWT_ALGORITHM="HS256"):
-            pass  # override_settings fires reload_jwt_settings → JWTSettings()
-
-    matches = [w for w in caught if issubclass(w.category, InsecureJWTKeyWarning)]
-    assert matches, f"expected InsecureJWTKeyWarning, got: {[w.category.__name__ for w in caught]}"
-    message = str(matches[0].message)
-    assert "HS256" in message
-    assert "32 bytes" in message
-    assert "JWT_SECRET_KEY" in message
-
-
-def test_sufficiently_long_key_does_not_warn():
-    """
-    A key at or above the algorithm's minimum does not emit the warning.
-    """
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        with override_settings(JWT_SECRET_KEY="x" * 32, JWT_ALGORITHM="HS256"):
             pass
 
-    assert not [w for w in caught if issubclass(w.category, InsecureJWTKeyWarning)]
 
-
-def test_non_hmac_algorithm_does_not_warn_on_short_key():
-    """
-    The RFC 7518 §3.2 minimum only applies to HMAC (HS*) algorithms.
-    A short key paired with a non-HMAC algorithm (e.g., RS256) does not
-    trigger the check — asymmetric key-length rules are different and
-    jwt_ninja doesn't try to validate them here.
-    """
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        # We're not actually encoding — just testing that the check
-        # is scoped to HMAC algorithms.
-        JWTSettings.__init__  # silence unused-import complaints if any
-        with override_settings(JWT_SECRET_KEY="short", JWT_ALGORITHM="RS256"):
+def test_missing_dedicated_key_fails_startup():
+    with pytest.raises(ImproperlyConfigured, match="explicit, non-empty"):
+        with override_settings(JWT_SECRET_KEY=""):
             pass
 
-    assert not [w for w in caught if issubclass(w.category, InsecureJWTKeyWarning)]
+
+def test_missing_issuer_or_audience_fails_startup():
+    with pytest.raises(ImproperlyConfigured, match="ISSUER and JWT_AUDIENCE"):
+        with override_settings(JWT_ISSUER=""):
+            pass
 
 
-def test_hs512_has_higher_minimum_than_hs256():
-    """
-    HS512 requires 64 bytes; a 32-byte key that's fine for HS256 should
-    still warn under HS512. Confirms the per-algorithm minimums table.
-    """
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
+def test_distinct_hmac_verifier_fails_startup():
+    with pytest.raises(ImproperlyConfigured, match="exactly match"):
+        with override_settings(JWT_VERIFYING_KEY="y" * 32):
+            pass
+
+
+def test_hs512_requires_larger_key():
+    with pytest.raises(ImproperlyConfigured, match="at least 64 bytes"):
         with override_settings(JWT_SECRET_KEY="x" * 32, JWT_ALGORITHM="HS512"):
             pass
 
-    matches = [w for w in caught if issubclass(w.category, InsecureJWTKeyWarning)]
-    assert matches
-    assert "HS512" in str(matches[0].message)
-    assert "64 bytes" in str(matches[0].message)
+
+def test_payload_class_must_be_jwt_payload_subclass():
+    with pytest.raises(ImproperlyConfigured, match="JWTPayload subclass"):
+        with override_settings(JWT_PAYLOAD_CLASS="builtins.str"):
+            pass
+
+
+def test_hmac_rejects_asymmetric_pem_material():
+    pem_like = "-----BEGIN PRIVATE KEY-----\n" + ("x" * 64)
+    with pytest.raises(ImproperlyConfigured, match="raw secret material"):
+        with override_settings(JWT_SECRET_KEY=pem_like, JWT_ALGORITHM="HS256"):
+            pass

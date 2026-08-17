@@ -1,3 +1,5 @@
+import time
+
 import jwt
 from pydantic import ValidationError
 
@@ -5,66 +7,79 @@ from . import settings as jwt_settings_module
 from .errors import JWTExpiredError, JWTInvalidPayloadFormat, JWTInvalidTokenError
 from .types import JWTPayload
 
+_TOKEN_TYPES: dict[str, str] = {"access": "at+jwt", "refresh": "rt+jwt"}
+
 
 def generate_jwt(payload: JWTPayload) -> str:
-    """
-    Generates a JSON Web Token (JWT)
+    """Generate a bounded, profile-conformant signed JWT."""
+    config = jwt_settings_module.jwt_settings
+    try:
+        claims = payload.model_dump(mode="json")
+        token_type = claims.get("type")
+        if not isinstance(token_type, str) or token_type not in _TOKEN_TYPES:
+            raise ValueError("Unsupported token type")
+        jose_type = _TOKEN_TYPES[token_type]
+        now = int(time.time())
+        maximum = config.ACCESS_TOKEN_EXPIRE_SECONDS if token_type == "access" else config.REFRESH_TOKEN_EXPIRE_SECONDS
+        exp = claims.get("exp")
+        if isinstance(exp, bool) or not isinstance(exp, (int, float)) or exp <= now or exp - now > maximum:
+            raise ValueError("Token lifetime is outside the configured profile")
+        claims.update(iss=config.ISSUER, aud=config.AUDIENCE, iat=now, nbf=now)
+        if claims.get("jti") is None:
+            claims.pop("jti", None)
+        token = jwt.encode(
+            payload=claims,
+            key=config.SECRET_KEY,
+            algorithm=config.ALGORITHM,
+            headers={"typ": jose_type},
+        )
+    except (KeyError, TypeError, ValueError, OverflowError) as exc:
+        raise JWTInvalidTokenError() from exc
 
-    Args:
-        payload (JWTPayload): The data to include in the token payload.
-
-    Returns:
-        str: The encoded JWT as a string.
-    """
-    claims = payload.model_dump(mode="json")
-
-    # RFC 7519 §4.1.7 types `jti` as a string and PyJWT rejects a null one, so
-    # the claim is omitted entirely on tokens that don't carry an id rather
-    # than serialised as `"jti": null`.
-    if claims.get("jti", False) is None:
-        del claims["jti"]
-
-    return jwt.encode(
-        payload=claims,
-        key=jwt_settings_module.jwt_settings.SECRET_KEY,
-        algorithm=jwt_settings_module.jwt_settings.ALGORITHM,
-    )
+    if not token or len(token) > config.MAX_TOKEN_LENGTH:
+        raise JWTInvalidTokenError()
+    return token
 
 
 def decode_jwt(token: str, payload_class: type[JWTPayload]) -> JWTPayload:
-    """
-    Decodes a JSON Web Token (JWT) and returns the payload.
+    """Decode a JWT under the configured issuer/audience/type profile."""
+    config = jwt_settings_module.jwt_settings
+    if not isinstance(token, str) or not token or len(token) > config.MAX_TOKEN_LENGTH:
+        raise JWTInvalidTokenError()
 
-    Args:
-        token (str): The encoded JWT as a string.
-        payload_class (type[JWTPayload]): The class to deserialize the payload into.
-
-    Returns:
-        JWTPayload: The deserialized payload.
-
-    Raises:
-        JWTExpiredError: If the token has expired.
-        JWTInvalidTokenError: If the token is invalid.
-        JWTInvalidPayloadFormat: If the payload format is invalid.
-    """
     try:
-        payload = jwt.decode(
+        decoded = jwt.decode_complete(
             jwt=token,
-            key=jwt_settings_module.jwt_settings.SECRET_KEY,
-            algorithms=[jwt_settings_module.jwt_settings.ALGORITHM],
-            # PyJWT only checks `exp` when it is present. Requiring it here
-            # stops a custom JWT_PAYLOAD_CLASS that makes `exp` optional from
-            # silently minting tokens that never expire.
-            options={"require": ["exp"]},
+            key=config.verification_key,
+            algorithms=[config.ALGORITHM],
+            audience=config.AUDIENCE,
+            issuer=config.ISSUER,
+            leeway=config.LEEWAY_SECONDS,
+            options={
+                "require": ["exp", "iss", "aud", "iat", "nbf", "type", "user_id", "session_id"],
+                "strict_aud": True,
+            },
         )
+        claims = decoded["payload"]
+        token_type = claims.get("type")
+        if token_type not in _TOKEN_TYPES or decoded["header"].get("typ") != _TOKEN_TYPES[token_type]:
+            raise JWTInvalidTokenError()
 
-    except jwt.ExpiredSignatureError as err:
-        raise JWTExpiredError() from err
-
-    except jwt.InvalidTokenError as err:
-        raise JWTInvalidTokenError() from err
+        iat = claims["iat"]
+        exp = claims["exp"]
+        if isinstance(iat, bool) or isinstance(exp, bool):
+            raise JWTInvalidTokenError()
+        maximum = config.ACCESS_TOKEN_EXPIRE_SECONDS if token_type == "access" else config.REFRESH_TOKEN_EXPIRE_SECONDS
+        if exp <= iat or exp - iat > maximum:
+            raise JWTInvalidTokenError()
+    except jwt.ExpiredSignatureError as exc:
+        raise JWTExpiredError() from exc
+    except JWTInvalidTokenError:
+        raise
+    except (jwt.InvalidTokenError, KeyError, TypeError, ValueError, OverflowError) as exc:
+        raise JWTInvalidTokenError() from exc
 
     try:
-        return payload_class(**payload)
+        return payload_class(**claims)
     except ValidationError as exc:
         raise JWTInvalidPayloadFormat() from exc

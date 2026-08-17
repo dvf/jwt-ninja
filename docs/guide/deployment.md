@@ -4,11 +4,18 @@ icon: lucide/server
 
 # Deployment checklist
 
-JWT Ninja deliberately leaves these tasks to your application:
+- [ ] Configure a dedicated `JWT_SECRET_KEY`, explicit `JWT_ISSUER` and `JWT_AUDIENCE`; configure a separate public `JWT_VERIFYING_KEY` for asymmetric signing.
+- [ ] Run migrations and plan forced reauthentication. Migration 0004 expires active pre-stamp rows; restored/manual NULL stamps also fail closed.
+- [ ] Serve over HTTPS. Keep access lifetimes short and clocks synchronized.
+- [ ] Confirm Django's CSRF middleware/settings, trusted origins, cookie domain, and browser flow for `cookie`/`both` transport. Bootstrap via `GET /auth/csrf/`.
+- [ ] Configure `JWT_TRUSTED_PROXY_CIDRS` only for proxies that overwrite forwarded headers. Leave it empty when Django is directly exposed.
+- [ ] Review default throttles (login 5/minute, refresh 30/minute), cache availability/capacity, and the 20-active-session cap. Cache failure denies login/refresh. LocMemCache is per process; use `JWT_THROTTLE_CACHE_ALIAS` for a shared atomic cache and/or an edge limiter.
+- [ ] Apply reverse-proxy/application limits for body and header sizes. JWT Ninja bounds credentials, tokens, session ids, user agents, and forwarded chains, but the edge should reject oversized requests before Django allocates them.
+- [ ] Schedule `Session.purge_expired_sessions()`.
+- [ ] Decide whether IP persistence is necessary (`JWT_PERSIST_CLIENT_IP=False` disables it).
+- [ ] Keep geolocation off unless needed. For the built-in third-party provider, record privacy/legal approval and set explicit consent; configure timeout/response limits. Prefer an offline provider.
+- [ ] Test password changes. A fixed-size HMAC fingerprint of `get_session_auth_hash()` is checked on every access and refresh, so `set_password()` and bulk password-hash changes revoke sessions without signals.
 
-- [ ] **Rate-limit `/auth/login/`.** Nothing in JWT Ninja throttles password guessing. Put a throttle in front of the endpoint: Django Ninja's built-in throttling, `django-ratelimit`, or your reverse proxy or WAF. Consider a rate limit on `/auth/refresh/` too.
-- [ ] **Schedule `Session.purge_expired_sessions()`.** Sessions carry a hard expiry, but nothing deletes the rows until you run the purge. See [Purge expired sessions](sessions.md#purge-expired-sessions).
-- [ ] **Serve over HTTPS.** Access tokens are bearer credentials. Anyone who observes one can use it until it expires.
-- [ ] **Keep `JWT_ACCESS_TOKEN_EXPIRE_SECONDS` short.** Every request checks the access token against the DB session, so revocation is quick. A short lifetime is still your backstop.
-- [ ] **Set a strong signing key.** See [Signing key length](../reference/configuration.md#signing-key-length).
-- [ ] **Size your geolocation provider to your login volume.** The built-in `ipapi_co_geolocator` does a blocking HTTPS lookup per login and is rate-limited. Beyond light traffic, switch to an offline database. See [Session geolocation](sessions.md#session-geolocation).
+PostgreSQL is the production concurrency target. SQLite receives bounded lock retries but is not recommended for concurrent authentication workloads.
+
+All auth-router responses, including controlled errors, are marked `Cache-Control: no-store` and `Pragma: no-cache`.

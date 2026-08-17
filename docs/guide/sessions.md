@@ -21,7 +21,7 @@ When JWT Ninja revokes a session, it sets `expired_at` on the row. This immediat
 
 !!! warning "On the recorded IP address"
 
-    `Session.ip_address` prefers the first entry in `X-Forwarded-For` and falls back to `REMOTE_ADDR`. Non-IP values are discarded rather than stored. Any client can send `X-Forwarded-For`, so the value is only trustworthy if a proxy you control overwrites the header on the way in. Treat it as a hint for support and debugging, not as evidence in an investigation.
+    `X-Forwarded-For` is ignored unless the direct peer is in `JWT_TRUSTED_PROXY_CIDRS`. JWT Ninja validates the bounded full chain and scans right-to-left past trusted proxies. Configure only proxy CIDRs you operate. Set `JWT_PERSIST_CLIENT_IP=False` when session IP storage is not necessary.
 
 ## Session geolocation
 
