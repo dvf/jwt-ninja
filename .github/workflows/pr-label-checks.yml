@@ -12,7 +12,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      issues: write
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -26,24 +25,18 @@ jobs:
         run: |
           git diff --name-only "$BASE_SHA" "$HEAD_SHA" > changed_files.txt
           cat changed_files.txt
-      - name: Apply migration label when migrations changed
-        if: github.event.pull_request.head.repo.full_name == github.repository
+      - name: Require migration label when migrations changed
         env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          EVENT_PATH: ${{ github.event_path }}
         run: |
-          if grep -Eq '(^|/)migrations/' changed_files.txt; then
-            echo 'Migrations detected; applying the exact "migration" label.'
-            gh api --method POST \
-              "repos/$REPOSITORY/issues/$PR_NUMBER/labels" \
-              --field 'labels[]=migration' >/dev/null
+          if ! grep -Eq '(^|/)migrations/' changed_files.txt; then
+            echo 'No migrations detected.'
+          elif jq -e '[.pull_request.labels[].name] | index("migration") != null' "$EVENT_PATH" >/dev/null; then
+            echo 'Migration change has the required "migration" label.'
           else
-            echo "No migrations detected."
+            echo 'Migration changes require the exact "migration" label; a maintainer must apply it.' >&2
+            exit 1
           fi
-      - name: Explain fork migration labeling
-        if: github.event.pull_request.head.repo.full_name != github.repository
-        run: echo 'Fork pull requests are not mutated; maintainers apply the migration label when required.'
       - name: Require exactly one release label
         env:
           EVENT_PATH: ${{ github.event_path }}
