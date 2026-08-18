@@ -26,39 +26,49 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Framework :: Django",
-    "Framework :: Django :: 5.0",
-    "Framework :: Django :: 5.1",
     "Framework :: Django :: 5.2",
     "Framework :: Django :: 6.0",
+    "Framework :: Django :: 6.1",
     "Topic :: Internet :: WWW/HTTP :: Session",
     "Topic :: Security",
 ]
 dependencies = [
-    "pydantic>=2.11.0",
-    "pydantic-settings>=2.9.0",
-    "pyjwt>=2.12.0",
-    "django-ninja>=1.4.0",
+    "django>=5.2.16,<6.2",
+    "django-ninja>=1.5.3,<2",
+    "pydantic>=2.12.5,<3",
+    "pydantic-settings>=2.14.2,<3",
+    "pyjwt>=2.13,<3",
 ]
 
 [project.optional-dependencies]
 # Asymmetric algorithms (RS*, ES*, PS*, EdDSA) need PyJWT's cryptography extra.
 crypto = [
-    "pyjwt[crypto]>=2.12.0",
+    "pyjwt[crypto]>=2.13,<3",
 ]
 
 [dependency-groups]
+audit = [
+    "pip-audit>=2.10.0,<3",
+]
+build = [
+    "hatchling==1.32.0",
+    "twine>=6.2.0,<7",
+    "uv-dynamic-versioning==0.14.0",
+]
 dev = [
-    "pyjwt[crypto]>=2.12.0",
-    "pytest-django>=4.11.0",
-    "pytest-freezer>=0.4.9",
-    "pytest-mock>=3.14.0",
-    "pytest>=9.0.3",
-    "pyrefly>=0.0.14",
-    "ruff>=0.16.2",
+    "psycopg[binary]>=3.2.10,<4",
+    "pyjwt[crypto]>=2.13,<3",
+    "pytest-django>=4.11.0,<5",
+    "pytest-freezer>=0.4.9,<1",
+    "pytest-mock>=3.14.0,<4",
+    "pytest>=9.0.3,<10",
+    "pyrefly>=0.0.14,<1",
+    "ruff>=0.16.2,<1",
 ]
 docs = [
-    "zensical>=0.0.54",
+    "zensical>=0.0.54,<1",
 ]
 
 [tool.ruff]
@@ -101,14 +111,19 @@ filter_files = true
 # python-version = "3.12"
 
 [build-system]
-requires = ["hatchling", "uv-dynamic-versioning"]
+requires = ["hatchling==1.32.0", "uv-dynamic-versioning==0.14.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
 source = "uv-dynamic-versioning"
 
+[tool.hatch.build.targets.sdist]
+core-metadata-version = "2.4"
+
 [tool.hatch.build.targets.wheel]
 packages = ["jwt_ninja"]
+exclude = ["jwt_ninja/tests/**"]
+core-metadata-version = "2.4"
 
 [tool.uv-dynamic-versioning]
 vcs = "git"

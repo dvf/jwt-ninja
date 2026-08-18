@@ -1,62 +1,51 @@
-name: PR Label Checks
+name: PR label checks
 
 on:
   pull_request:
-    types: [ opened, synchronize, labeled ]
+    types: [opened, synchronize, labeled, reopened, unlabeled]
 
-permissions:
-  contents: read
-  pull-requests: write
-  issues: write
-  repository-projects: write
+permissions: {}
 
 jobs:
   check-labels:
-    name: Check Version Labels and Migrations
+    name: Check version labels and migrations
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-
+          persist-credentials: false
       - name: Get changed files
-        id: changes
-        run: |
-          git diff --name-only origin/${{ github.event.pull_request.base.ref }} ${{ github.sha }} > changed_files.txt
-          cat changed_files.txt
-
-      - name: Apply "migration" label if migrations detected
-        run: |
-          if grep -q 'migrations/' changed_files.txt; then
-            echo "Migrations detected in the diff. Applying 'migration' label."
-            gh pr edit ${{ github.event.pull_request.number }} --add-label "migration"
-          else
-            echo "No migrations detected."
-          fi
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Check if PR has version labels
-        id: label-check
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          REQUIRED_LABELS=("breaking-change" "feature" "fix" "maintenance")
-          LABELS=$(jq -r '.pull_request.labels[].name' "$GITHUB_EVENT_PATH")
-          echo "Labels on this PR: $LABELS"
-          
-          REQUIRED_LABEL_FOUND=false
-          
-          # Check if any required label is present
-          for label in "${REQUIRED_LABELS[@]}"; do
-            if echo "$LABELS" | grep -q "$label"; then
-              REQUIRED_LABEL_FOUND=true
-              echo "Found required label: $label"
-              break
-            fi
-          done
-          
-          if [ "$REQUIRED_LABEL_FOUND" = false ]; then
-            echo "Error: Pull request must have one of the following labels: ${REQUIRED_LABELS[*]}"
+          git diff --name-only "$BASE_SHA" "$HEAD_SHA" > changed_files.txt
+          cat changed_files.txt
+      - name: Require migration label when migrations changed
+        env:
+          EVENT_PATH: ${{ github.event_path }}
+        run: |
+          if ! grep -Eq '(^|/)migrations/' changed_files.txt; then
+            echo 'No migrations detected.'
+          elif jq -e '[.pull_request.labels[].name] | index("migration") != null' "$EVENT_PATH" >/dev/null; then
+            echo 'Migration change has the required "migration" label.'
+          else
+            echo 'Migration changes require the exact "migration" label; a maintainer must apply it.' >&2
             exit 1
           fi
-        shell: bash
+      - name: Require exactly one release label
+        env:
+          EVENT_PATH: ${{ github.event_path }}
+        run: |
+          if ! jq -e '
+            [.pull_request.labels[].name
+              | select(. == "breaking-change" or . == "feature" or . == "fix" or . == "maintenance")]
+            | length == 1
+          ' "$EVENT_PATH" >/dev/null; then
+            echo 'Pull request must have one exact release label: breaking-change, feature, fix, or maintenance.' >&2
+            exit 1
+          fi

@@ -19,13 +19,14 @@ wheels/
 .DS_Store
 
 # Environment and secrets
-.env
-.env.local
-.env.*.local
+.env*
+!.env.example
+!.env.*.example
 
 # Agent and AI tool directories
 .agents/
 .pi/
+.pi-subagents/
 .claude/
 .aider/
 .cursor/

@@ -4,66 +4,56 @@ icon: lucide/settings
 
 # Configuration
 
-All settings are Django settings prefixed with `JWT_`. Defaults shown below:
+JWT Ninja validates its security profile at startup. The following three values are mandatory and there is **no** fallback to Django's `SECRET_KEY`:
 
 ```python title="settings.py"
-JWT_SECRET_KEY = SECRET_KEY  # Defaults to Django's SECRET_KEY
+JWT_SECRET_KEY = "a-dedicated-random-key-of-at-least-32-bytes"
+JWT_ISSUER = "https://auth.example.com"
+JWT_AUDIENCE = "example-api"
 JWT_ALGORITHM = "HS256"
-JWT_ACCESS_TOKEN_EXPIRE_SECONDS = 300  # 5 minutes
-JWT_REFRESH_TOKEN_EXPIRE_SECONDS = 365 * 3600  # ~15 days
-JWT_SESSION_EXPIRE_SECONDS = 365 * 3600  # ~15 days (0 disables session expiry)
-JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS = 30  # 0 disables the grace window
-JWT_USER_LOGIN_AUTHENTICATOR = "jwt_ninja.authenticators.django_user_authenticator"
-JWT_PAYLOAD_CLASS = "jwt_ninja.types.JWTPayload"
-JWT_REFRESH_TOKEN_TRANSPORT = "body"  # "body", "cookie", or "both"
-JWT_REFRESH_COOKIE_NAME = "refresh_token"
-JWT_REFRESH_COOKIE_SECURE = True
-JWT_REFRESH_COOKIE_HTTPONLY = True
-JWT_REFRESH_COOKIE_SAMESITE = "Lax"  # "Lax", "Strict", or "None"
-JWT_REFRESH_COOKIE_PATH = "/auth/refresh/"
-JWT_REFRESH_COOKIE_DOMAIN = None
-JWT_GEOLOCATION_PROVIDER = None  # Dotted path to a geolocation callable; None disables lookups
 ```
 
-| Setting                              | Type                               | Description                                                                                     |
-| ------------------------------------ | ---------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `JWT_SECRET_KEY`                     | `str`                              | Signing key. Defaults to Django's `SECRET_KEY`. See [Signing key length](#signing-key-length). |
-| `JWT_ALGORITHM`                      | `str`                              | PyJWT algorithm. Symmetric (`HS*`) or asymmetric (`RS*`, `ES*`, …). Validated at startup. `none` is rejected. Asymmetric algorithms require `pip install 'jwtninja[crypto]'`. |
-| `JWT_ACCESS_TOKEN_EXPIRE_SECONDS`    | `int`                              | Lifetime of the short-lived access token.                                                      |
-| `JWT_REFRESH_TOKEN_EXPIRE_SECONDS`   | `int`                              | Lifetime of the refresh token.                                                                 |
-| `JWT_SESSION_EXPIRE_SECONDS`         | `int`                              | Hard max age applied to a `Session` at creation. `0` means sessions live until logged out.     |
-| `JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS` | `int`                           | Seconds a just-rotated refresh token stays valid, so a retried request is not read as a replay. `0` enforces strict single use. |
-| `JWT_USER_LOGIN_AUTHENTICATOR`       | `str`                              | Dotted path to a callable `(request, payload) -> User \| None` used by `/auth/login/`.         |
-| `JWT_PAYLOAD_CLASS`                  | `str`                              | Dotted path to a `JWTPayload` subclass if you need custom claims.                              |
-| `JWT_REFRESH_TOKEN_TRANSPORT`        | `"body" \| "cookie" \| "both"` | Where refresh tokens are returned and read.                                                    |
-| `JWT_REFRESH_COOKIE_NAME`            | `str`                              | Cookie name used when cookie transport is enabled.                                             |
-| `JWT_REFRESH_COOKIE_SECURE`          | `bool`                             | Sets the cookie's `Secure` flag.                                                               |
-| `JWT_REFRESH_COOKIE_HTTPONLY`        | `bool`                             | Sets the cookie's `HttpOnly` flag.                                                             |
-| `JWT_REFRESH_COOKIE_SAMESITE`        | `"Lax" \| "Strict" \| "None"` | Sets the cookie's `SameSite` policy.                                                           |
-| `JWT_REFRESH_COOKIE_PATH`            | `str`                              | Restricts the cookie to the refresh endpoint path.                                             |
-| `JWT_REFRESH_COOKIE_DOMAIN`          | `str \| None`                     | Optional cookie domain override.                                                               |
-| `JWT_GEOLOCATION_PROVIDER`           | `str \| None`                     | Dotted path to a callable `(ip: str) -> GeoLocation \| None` run once per login. `None` disables geolocation. See [Session geolocation](../guide/sessions.md#session-geolocation). |
+For asymmetric algorithms, `JWT_SECRET_KEY` is the private signing key and `JWT_VERIFYING_KEY` is the separate public key. HMAC must omit `JWT_VERIFYING_KEY` or set it to the exact signing key. Startup fails for `none`/unsupported algorithms, undersized HMAC keys, malformed or incompatible keys, public-only signing keys, mismatched pairs, and RSA/PS keys below 2048 bits.
 
-## Signing key length
+Tokens include and validate `iss`, `aud`, `iat`, `nbf`, and `exp`, enforce `JWT_LEEWAY_SECONDS`, enforce the configured lifetime for each token type, and require exact JOSE `typ` headers (`at+jwt` and `rt+jwt`).
 
-For HMAC algorithms (the `HS*` family, including the default `HS256`), [RFC 7518 §3.2](https://www.rfc-editor.org/rfc/rfc7518#section-3.2) requires the signing key to be at least the size of the hash output:
+## Settings
 
-| Algorithm | Minimum key size |
-| --------- | ---------------- |
-| `HS256`   | 32 bytes         |
-| `HS384`   | 48 bytes         |
-| `HS512`   | 64 bytes         |
+| Setting | Default | Notes |
+| --- | --- | --- |
+| `JWT_SECRET_KEY` | required | Dedicated signing key; never Django `SECRET_KEY`. |
+| `JWT_VERIFYING_KEY` | `None` | Required separate public key for asymmetric algorithms. |
+| `JWT_ALGORITHM` | `HS256` | Supported signed JOSE algorithm; `none` is rejected. |
+| `JWT_ISSUER` / `JWT_AUDIENCE` | required | Non-empty exact validation values. |
+| `JWT_LEEWAY_SECONDS` | `0` | Clock leeway, 0–300 seconds. |
+| `JWT_ACCESS_TOKEN_EXPIRE_SECONDS` | `300` | Access lifetime and maximum accepted access lifetime. |
+| `JWT_REFRESH_TOKEN_EXPIRE_SECONDS` | `14 * 86400` | Refresh lifetime and maximum accepted refresh lifetime (14 days). |
+| `JWT_SESSION_EXPIRE_SECONDS` | `14 * 86400` | Session max age (14 days); `0` disables age-out. Cannot exceed refresh lifetime. |
+| `JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS` | `0` | Must remain `0`; positive values fail startup. |
+| `JWT_REFRESH_TOKEN_TRANSPORT` | `body` | `body`, `cookie`, or `both`. Cookie/both enable CSRF checks. |
+| `JWT_REFRESH_COOKIE_*` | secure defaults | `SameSite=None` requires both Secure and HttpOnly. |
+| `JWT_LOGIN_THROTTLE_RATE` | `5/min` | Cache-backed pre-auth limit. `None` or `"0"` explicitly disables. |
+| `JWT_REFRESH_THROTTLE_RATE` | `30/min` | Runs before token decode. `None` or `"0"` explicitly disables. |
+| `JWT_THROTTLE_CACHE_ALIAS` | `default` | Django cache alias used for counters; must exist in `CACHES` when a throttle is enabled. Use a shared atomic cache in multi-worker production. |
+| `JWT_MAX_ACTIVE_SESSIONS` | `20` | Per-user cap; oldest active sessions are atomically revoked and all active rows are listed. |
+| `JWT_MAX_TOKEN_LENGTH` | `8192` | Bound for generated and received tokens. |
+| `JWT_MAX_USERNAME_LENGTH` | `254` | Login credential bound. |
+| `JWT_MAX_PASSWORD_LENGTH` | `1024` | Login credential bound. |
+| `JWT_TRUSTED_PROXY_CIDRS` | `[]` | Proxy networks allowed to supply `X-Forwarded-For`. |
+| `JWT_MAX_FORWARDED_HEADER_LENGTH` | `2048` | Forwarded header byte/character bound. |
+| `JWT_MAX_FORWARDED_HOPS` | `10` | Entire chain must validate within this limit. |
+| `JWT_PERSIST_CLIENT_IP` | `True` | Set false to avoid storing the resolved IP. |
+| `JWT_GEOLOCATION_PROVIDER` | `None` | Geolocation is off by default. |
+| `JWT_GEOLOCATION_THIRD_PARTY_CONSENT` | `False` | Must be true for the built-in ipapi.co network provider. |
+| `JWT_GEOLOCATION_TIMEOUT_SECONDS` | `2.0` | Bounded network timeout. |
+| `JWT_GEOLOCATION_MAX_RESPONSE_BYTES` | `32768` | Maximum provider response size. Redirects are rejected. |
+| `JWT_USER_LOGIN_AUTHENTICATOR` | Django authenticator | Dotted login callback. |
+| `JWT_PAYLOAD_CLASS` | `jwt_ninja.types.JWTPayload` | Subclasses retain custom claims. |
 
-Shorter keys are padded internally, which gives an attacker a smaller space to search. An attacker who recovers the key can forge tokens for any user.
+All numeric limits and CIDRs are validated at startup. An unknown throttle cache alias fails startup, and runtime throttle cache failures deny authentication with a logged warning rather than silently disabling protection. Django's LocMemCache is isolated per process; select a shared atomic cache with `JWT_THROTTLE_CACHE_ALIAS` and/or enforce an edge limit when a deployment-wide guarantee is required.
 
-!!! warning
+## Proxy and privacy model
 
-    JWT Ninja emits `jwt_ninja.settings.InsecureJWTKeyWarning` at startup if your configured key is too short. The warning appears in your app logs as soon as the settings load. PyJWT also emits its own `InsecureKeyLengthWarning` at encode/decode time.
+Forwarded headers are ignored unless the direct peer (`REMOTE_ADDR`) is in a configured trusted CIDR. JWT Ninja validates the whole bounded chain, scans right-to-left past trusted proxies, and safely falls back to the direct peer on malformed or excessive input. Only list proxy networks you operate.
 
-Django's `get_random_secret_key()` already produces 50-character keys, so fresh projects are fine. Short keys typically appear in older projects or in manually set `JWT_SECRET_KEY` values. To generate a suitable key:
-
-```bash
-python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
-```
-
-Rotating the key invalidates all existing JWT Ninja sessions, because existing tokens fail signature verification. All users must log in again after you deploy the change.
+Geolocation output is validated and field/coordinate bounded. Failures remain non-fatal and logs omit the client IP. The built-in provider rejects redirects and oversized responses. Prefer an offline provider; enabling a third-party provider discloses login IP addresses under that provider's privacy terms.

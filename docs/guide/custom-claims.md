@@ -21,7 +21,7 @@ JWT_PAYLOAD_CLASS = "myapp.auth.CustomJWTPayload"
 
 !!! note
 
-    If you add required fields, you also need a [custom authenticator](custom-authenticator.md) or a custom login endpoint that populates them.
+    The built-in issuer supplies only base claims. Extra fields need defaults, or a custom token-issuing/login flow must construct them. A [custom authenticator](custom-authenticator.md) alone returns only a user and cannot inject required claims.
 
 ## Overriding `user_id`
 

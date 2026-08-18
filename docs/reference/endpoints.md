@@ -4,10 +4,13 @@ icon: lucide/route
 
 # Endpoints
 
+All responses use `Cache-Control: no-store` and `Pragma: no-cache`. Login and refresh require a JSON media type. In cookie or both mode, call `GET /auth/csrf/`, retain its CSRF cookie, and send the returned `csrf_token` in `X-CSRFToken` on login and refresh.
+
 | Method   | Path                   | Purpose                                         | Success | Errors              |
 | -------- | ---------------------- | ----------------------------------------------- | ------- | ------------------- |
-| `POST`   | `/auth/login/`         | Issue an access token and a refresh token       | `200`   | `401`               |
-| `POST`   | `/auth/refresh/`       | Refresh an access token                         | `200`   | `400`, `401`        |
+| `GET`    | `/auth/csrf/`          | Set CSRF cookie and return a masked token       | `200`   | —                   |
+| `POST`   | `/auth/login/`         | Issue an access token and a refresh token       | `200`   | `401`, `403`, `415`, `429` |
+| `POST`   | `/auth/refresh/`       | Strictly consume and rotate a refresh token     | `200`   | `400`, `401`, `403`, `415`, `429` |
 | `GET`    | `/auth/sessions/`      | List the caller's active sessions               | `200`   | `401`               |
 | `DELETE` | `/auth/sessions/{id}/` | Revoke a single session                         | `200`   | `401`, `404`        |
 | `POST`   | `/auth/logout/`        | Expire the caller's current session             | `200`   | `401`               |
@@ -51,7 +54,7 @@ In `both` mode, the server returns the refresh token in JSON **and** sets the co
 
 === "`cookie` mode"
 
-    Send the refresh token cookie that `/auth/login/` set.
+    Send `{}` as JSON with the refresh token cookie that `/auth/login/` set and a valid `X-CSRFToken` header.
 
 **Response (`200`)**
 
@@ -69,7 +72,7 @@ In `both` mode, the server returns the refresh token in JSON **and** sets the co
 
 !!! warning "Refresh tokens are rotated"
 
-    Every call to `/auth/refresh/` returns a new refresh token and retires the one you sent. Store the new token and use it for the next refresh. See [Rotation](../guide/refresh-tokens.md#rotation).
+    Every call atomically consumes the current token. Store the replacement immediately. Concurrent/replayed use revokes the session. If a response is lost, do not retry the uncertain old token; require reauthentication. See [Strict atomic rotation](../guide/refresh-tokens.md#strict-atomic-rotation).
 
 ## `GET /auth/sessions/`
 

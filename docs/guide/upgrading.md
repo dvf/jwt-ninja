@@ -4,18 +4,21 @@ icon: lucide/arrow-up-circle
 
 # Upgrading
 
-This release tightens several auth behaviors. Read these notes before you upgrade an existing deployment.
+This is an intentionally breaking, fail-closed security migration:
 
-- **Refresh tokens no longer authenticate protected routes.** `JWTAuth` now requires `type == "access"`. Any other token type gets `401 invalid_token_type`. If a client sends its refresh token as a `Bearer` credential, it must switch to the access token.
-- **Refresh tokens rotate on every use.** `/auth/refresh/` now returns a new `refresh_token` with the access token and retires the one you sent. Clients in `body` mode must store and use the returned token. Clients in `cookie` mode need no change. See [Rotation](refresh-tokens.md#rotation).
-- **`/auth/refresh/` now validates the session.** If the session was logged out or deleted, the server rejects the refresh token instead of minting a new access token.
-- **Sessions now have a hard expiry.** Earlier versions ignored `JWT_SESSION_EXPIRE_SECONDS`, so sessions never expired. The setting now applies at session creation. Set it to `0` to keep the old behavior.
-- **`expired_at` is set on live sessions.** `expired_at__isnull=True` no longer means "active". Use `Session.objects.active()` in your own queries.
-- **Deleting a `User` now returns `session_not_found` on `/auth/refresh/`, not `invalid_user`.** The delete cascade removes the session first. Both codes are `401`.
-- **`JWT_ALGORITHM` is validated at startup.** `none`, typos, and asymmetric algorithms without the `crypto` extra now raise `ImproperlyConfigured` instead of failing later.
+- Upgrade the runtime first: Python 3.12+ and Django >=5.2.16,<6.2 are required. Django 5.0 and 5.1 are no longer supported.
+- Deploy atomically rather than running mixed old/new authentication workers. Old workers issue legacy-profile tokens that new workers reject; coordinate migration and replacement as a forced-reauthentication rollout.
+- Configure an explicit dedicated `JWT_SECRET_KEY`, `JWT_ISSUER`, and `JWT_AUDIENCE` before startup. Django `SECRET_KEY` is no longer a fallback. Asymmetric algorithms require a separate matching `JWT_VERIFYING_KEY`.
+- Short or incompatible JWT keys now stop startup instead of emitting `jwt_ninja.settings.InsecureJWTKeyWarning`; that warning class has been removed. Delete imports or warning filters that referenced it.
+- Run `python manage.py migrate`. Migration 0004 expires all active pre-stamp rows; the nullable field also fails closed for restored/manual NULL rows. Plan a forced login for every user.
+- Existing refresh tokens without a `jti` are rejected rather than adopted. `JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS` must be `0`; previous JTIs are never accepted.
+- Refresh is strict single-use CAS rotation. A replay or concurrent consume commits family revocation and returns `token_reuse_detected`. A lost response is ambiguous and clients must reauthenticate rather than retry.
+- Tokens now require validated issuer, audience, `iat`, `nbf`, `exp`, bounded lifetime, and exact JOSE `typ`. Old tokens without this profile are invalid.
+- The default `JWT_REFRESH_TOKEN_EXPIRE_SECONDS` and `JWT_SESSION_EXPIRE_SECONDS` are now `14 * 86400` (14 days). The previous default read `365 * 3600` but evaluated to only ~15.2 days, so effective behavior is nearly unchanged; set the values explicitly if you relied on the old exact number.
+- Cookie and both transport now enforce Django CSRF on both login and refresh. Add the `GET /auth/csrf/` bootstrap/header flow and send `{}` for cookie refresh.
+- Login/refresh now require JSON media types and have default cache-backed limits (5/minute and 30/minute). The default user cap is 20 active sessions, revoking oldest first.
+- Password authentication-hash changes revoke sessions on their next access or refresh, including bulk database updates without signals.
+- `X-Forwarded-For` is ignored unless the direct peer is in `JWT_TRUSTED_PROXY_CIDRS`. Review IP persistence and geolocation consent/privacy settings.
+- All auth responses are no-store. Apply deployment-level body and header size limits as an additional outer bound.
 
-Run `python manage.py migrate` to add the rotation columns.
-
-!!! tip "Existing refresh tokens survive the upgrade"
-
-    Refresh tokens issued before rotation existed are accepted once and adopted into rotation, so upgrading does not log out your user base. See [Upgrading existing deployments](refresh-tokens.md#upgrading-existing-deployments).
+Read [Configuration](../reference/configuration.md), [Refresh tokens](refresh-tokens.md), and the [Deployment checklist](deployment.md) before rollout.

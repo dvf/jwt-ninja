@@ -1,0 +1,169 @@
+name: Security checks
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  schedule:
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        with:
+          languages: python
+      - name: Analyze
+        uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+
+  gitleaks:
+    name: Gitleaks exact-range scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install checksum-verified Gitleaks 8.30.1
+        env:
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+          GITLEAKS_URL: https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/gitleaks.tar.gz"
+          curl --fail --silent --show-error --location "$GITLEAKS_URL" --output "$archive"
+          echo "$GITLEAKS_SHA256  $archive" | sha256sum --check --strict
+          install_dir="$RUNNER_TEMP/gitleaks-bin"
+          mkdir -p "$install_dir"
+          tar -xzf "$archive" -C "$install_dir" gitleaks
+          chmod 0755 "$install_dir/gitleaks"
+          echo "$install_dir" >> "$GITHUB_PATH"
+      - name: Scan exact event history
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          PUSH_AFTER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            git cat-file -e "$PR_BASE_SHA^{commit}"
+            git cat-file -e "$PR_HEAD_SHA^{commit}"
+            gitleaks git . --redact --log-opts="$PR_BASE_SHA..$PR_HEAD_SHA"
+          elif [[ "$EVENT_NAME" == "push" ]] \
+            && [[ "$PUSH_BEFORE_SHA" != "0000000000000000000000000000000000000000" ]] \
+            && git cat-file -e "$PUSH_BEFORE_SHA^{commit}"; then
+            gitleaks git . --redact --log-opts="$PUSH_BEFORE_SHA..$PUSH_AFTER_SHA"
+          else
+            gitleaks git . --redact --log-opts="--all"
+          fi
+
+  dependency-audit:
+    name: Frozen dependency audit (${{ matrix.export }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - export: runtime
+            extra: ""
+          - export: crypto
+            extra: "--extra crypto"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          version: "0.9.18"
+          enable-cache: true
+      - name: Audit frozen export
+        env:
+          EXPORT_NAME: ${{ matrix.export }}
+          EXTRA_ARGS: ${{ matrix.extra }}
+        run: |
+          set -euo pipefail
+          uv lock --check
+          uv export --frozen --no-dev --no-emit-project $EXTRA_ARGS \
+            --output-file "requirements-$EXPORT_NAME.txt"
+          uv run --frozen --only-group audit pip-audit \
+            --requirement "requirements-$EXPORT_NAME.txt" --strict
+
+  supported-environment-audit:
+    name: Audit Django ${{ matrix['django-label'] }} / ${{ matrix.install }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        django-label: ["5.2", "6.0", "6.1"]
+        install: [runtime, crypto]
+        include:
+          - django-label: "5.2"
+            django-spec: "==5.2.16"
+          - django-label: "6.0"
+            django-spec: ">=6.0,<6.1"
+          - django-label: "6.1"
+            django-spec: ">=6.1,<6.2"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          version: "0.9.18"
+          enable-cache: true
+      - name: Resolve and audit supported environment
+        env:
+          DJANGO_SPEC: ${{ matrix['django-spec'] }}
+          INSTALL_PROFILE: ${{ matrix.install }}
+        run: |
+          set -euo pipefail
+          uv lock --check
+          uv venv --python 3.12 .venv-audit
+          uv pip install --python .venv-audit/bin/python \
+            hatchling==1.32.0 uv-dynamic-versioning==0.14.0
+          project="."
+          if [[ "$INSTALL_PROFILE" == "crypto" ]]; then project=".[crypto]"; fi
+          uv pip install --python .venv-audit/bin/python --no-build-isolation \
+            "$project" "django$DJANGO_SPEC"
+          uv pip freeze --python .venv-audit/bin/python \
+            | grep -v '^jwtninja @ ' > requirements-supported.txt
+          # Windows' Django resolution includes tzdata; audit its locked version explicitly on Linux.
+          tzdata_version="$(python -c \
+            'import tomllib; data=tomllib.load(open("uv.lock", "rb")); print(next(p["version"] for p in data["package"] if p["name"] == "tzdata"))')"
+          echo "tzdata==$tzdata_version" >> requirements-supported.txt
+          uv run --frozen --only-group audit pip-audit \
+            --requirement requirements-supported.txt --no-deps --disable-pip --strict

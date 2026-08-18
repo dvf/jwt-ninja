@@ -25,7 +25,7 @@ def user(mocker):
 
 @pytest.fixture
 def session(mocker, user):
-    return mocker.MagicMock(id=333, expired_at=None, user_id=user.id)
+    return mocker.MagicMock(id="session-id", expired_at=None, user_id=user.id)
 
 
 @pytest.fixture
