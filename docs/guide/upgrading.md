@@ -14,6 +14,7 @@ This is an intentionally breaking, fail-closed security migration:
 - Existing refresh tokens without a `jti` are rejected rather than adopted. `JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS` must be `0`; previous JTIs are never accepted.
 - Refresh is strict single-use CAS rotation. A replay or concurrent consume commits family revocation and returns `token_reuse_detected`. A lost response is ambiguous and clients must reauthenticate rather than retry.
 - Tokens now require validated issuer, audience, `iat`, `nbf`, `exp`, bounded lifetime, and exact JOSE `typ`. Old tokens without this profile are invalid.
+- The default `JWT_REFRESH_TOKEN_EXPIRE_SECONDS` and `JWT_SESSION_EXPIRE_SECONDS` are now `14 * 86400` (14 days). The previous default read `365 * 3600` but evaluated to only ~15.2 days, so effective behavior is nearly unchanged; set the values explicitly if you relied on the old exact number.
 - Cookie and both transport now enforce Django CSRF on both login and refresh. Add the `GET /auth/csrf/` bootstrap/header flow and send `{}` for cookie refresh.
 - Login/refresh now require JSON media types and have default cache-backed limits (5/minute and 30/minute). The default user cap is 20 active sessions, revoking oldest first.
 - Password authentication-hash changes revoke sessions on their next access or refresh, including bulk database updates without signals.

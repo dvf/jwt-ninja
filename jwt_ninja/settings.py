@@ -117,10 +117,10 @@ class JWTSettings(BaseSettings):
         default_factory=lambda: _django_setting("ACCESS_TOKEN_EXPIRE_SECONDS", 300), ge=1, le=86400
     )
     REFRESH_TOKEN_EXPIRE_SECONDS: int = Field(
-        default_factory=lambda: _django_setting("REFRESH_TOKEN_EXPIRE_SECONDS", 365 * 3600), ge=1, le=31536000
+        default_factory=lambda: _django_setting("REFRESH_TOKEN_EXPIRE_SECONDS", 14 * 86400), ge=1, le=31536000
     )
     SESSION_EXPIRE_SECONDS: int = Field(
-        default_factory=lambda: _django_setting("SESSION_EXPIRE_SECONDS", 365 * 3600), ge=0, le=31536000
+        default_factory=lambda: _django_setting("SESSION_EXPIRE_SECONDS", 14 * 86400), ge=0, le=31536000
     )
     MAX_TOKEN_LENGTH: int = Field(default_factory=lambda: _django_setting("MAX_TOKEN_LENGTH", 8192), ge=256, le=65536)
     MAX_USERNAME_LENGTH: int = Field(default_factory=lambda: _django_setting("MAX_USERNAME_LENGTH", 254), ge=1, le=1024)

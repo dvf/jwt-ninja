@@ -27,8 +27,8 @@ Tokens include and validate `iss`, `aud`, `iat`, `nbf`, and `exp`, enforce `JWT_
 | `JWT_ISSUER` / `JWT_AUDIENCE` | required | Non-empty exact validation values. |
 | `JWT_LEEWAY_SECONDS` | `0` | Clock leeway, 0–300 seconds. |
 | `JWT_ACCESS_TOKEN_EXPIRE_SECONDS` | `300` | Access lifetime and maximum accepted access lifetime. |
-| `JWT_REFRESH_TOKEN_EXPIRE_SECONDS` | `365 * 3600` | Refresh lifetime and maximum accepted refresh lifetime. |
-| `JWT_SESSION_EXPIRE_SECONDS` | `365 * 3600` | Session max age; `0` disables age-out. Cannot exceed refresh lifetime. |
+| `JWT_REFRESH_TOKEN_EXPIRE_SECONDS` | `14 * 86400` | Refresh lifetime and maximum accepted refresh lifetime (14 days). |
+| `JWT_SESSION_EXPIRE_SECONDS` | `14 * 86400` | Session max age (14 days); `0` disables age-out. Cannot exceed refresh lifetime. |
 | `JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS` | `0` | Must remain `0`; positive values fail startup. |
 | `JWT_REFRESH_TOKEN_TRANSPORT` | `body` | `body`, `cookie`, or `both`. Cookie/both enable CSRF checks. |
 | `JWT_REFRESH_COOKIE_*` | secure defaults | `SameSite=None` requires both Secure and HttpOnly. |
