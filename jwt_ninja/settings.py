@@ -227,6 +227,12 @@ class JWTSettings(BaseSettings):
 
         self._LOGIN_RATE = _parse_rate(self.LOGIN_THROTTLE_RATE, "LOGIN_THROTTLE_RATE")
         self._REFRESH_RATE = _parse_rate(self.REFRESH_THROTTLE_RATE, "REFRESH_THROTTLE_RATE")
+        if (self._LOGIN_RATE or self._REFRESH_RATE) and self.THROTTLE_CACHE_ALIAS not in (settings.CACHES or {}):
+            # A missing alias would otherwise surface only as every login and
+            # refresh failing closed with 429 at request time.
+            raise ImproperlyConfigured(
+                f"JWT_THROTTLE_CACHE_ALIAS {self.THROTTLE_CACHE_ALIAS!r} is not a configured Django cache."
+            )
         _validate_key_profile(self)
 
     @property

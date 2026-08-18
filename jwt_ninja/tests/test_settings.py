@@ -208,6 +208,21 @@ def test_payload_class_must_be_jwt_payload_subclass():
             pass
 
 
+def test_unknown_throttle_cache_alias_fails_startup():
+    with pytest.raises(ImproperlyConfigured, match="not a configured Django cache"):
+        with override_settings(JWT_THROTTLE_CACHE_ALIAS="missing-alias"):
+            pass
+
+
+def test_unknown_throttle_cache_alias_is_allowed_when_throttling_disabled():
+    with override_settings(
+        JWT_THROTTLE_CACHE_ALIAS="missing-alias",
+        JWT_LOGIN_THROTTLE_RATE=None,
+        JWT_REFRESH_THROTTLE_RATE=None,
+    ):
+        pass
+
+
 def test_hmac_rejects_asymmetric_pem_material():
     pem_like = "-----BEGIN PRIVATE KEY-----\n" + ("x" * 64)
     with pytest.raises(ImproperlyConfigured, match="raw secret material"):

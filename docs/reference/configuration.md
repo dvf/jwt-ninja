@@ -34,7 +34,7 @@ Tokens include and validate `iss`, `aud`, `iat`, `nbf`, and `exp`, enforce `JWT_
 | `JWT_REFRESH_COOKIE_*` | secure defaults | `SameSite=None` requires both Secure and HttpOnly. |
 | `JWT_LOGIN_THROTTLE_RATE` | `5/min` | Cache-backed pre-auth limit. `None` or `"0"` explicitly disables. |
 | `JWT_REFRESH_THROTTLE_RATE` | `30/min` | Runs before token decode. `None` or `"0"` explicitly disables. |
-| `JWT_THROTTLE_CACHE_ALIAS` | `default` | Django cache alias used for counters. Use a shared atomic cache in multi-worker production. |
+| `JWT_THROTTLE_CACHE_ALIAS` | `default` | Django cache alias used for counters; must exist in `CACHES` when a throttle is enabled. Use a shared atomic cache in multi-worker production. |
 | `JWT_MAX_ACTIVE_SESSIONS` | `20` | Per-user cap; oldest active sessions are atomically revoked and all active rows are listed. |
 | `JWT_MAX_TOKEN_LENGTH` | `8192` | Bound for generated and received tokens. |
 | `JWT_MAX_USERNAME_LENGTH` | `254` | Login credential bound. |
@@ -50,7 +50,7 @@ Tokens include and validate `iss`, `aud`, `iat`, `nbf`, and `exp`, enforce `JWT_
 | `JWT_USER_LOGIN_AUTHENTICATOR` | Django authenticator | Dotted login callback. |
 | `JWT_PAYLOAD_CLASS` | `jwt_ninja.types.JWTPayload` | Subclasses retain custom claims. |
 
-All numeric limits and CIDRs are validated at startup. Throttle cache failures deny authentication rather than silently disabling protection. Django's LocMemCache is isolated per process; select a shared atomic cache with `JWT_THROTTLE_CACHE_ALIAS` and/or enforce an edge limit when a deployment-wide guarantee is required.
+All numeric limits and CIDRs are validated at startup. An unknown throttle cache alias fails startup, and runtime throttle cache failures deny authentication with a logged warning rather than silently disabling protection. Django's LocMemCache is isolated per process; select a shared atomic cache with `JWT_THROTTLE_CACHE_ALIAS` and/or enforce an edge limit when a deployment-wide guarantee is required.
 
 ## Proxy and privacy model
 

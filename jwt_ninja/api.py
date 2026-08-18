@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import time
 from functools import wraps
 from math import ceil
@@ -27,6 +28,7 @@ from .request import get_client_ip, get_user_agent
 from .types import ErrorResponseType, LoginSchema, RefreshTokenSchema, SessionResponse, TokenSchema
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 router = Router(tags=["Authentication"])
 _SESSION_ID_MAX_LENGTH = 43
 
@@ -60,8 +62,11 @@ def _enforce_rate_limit(request: HttpRequest, scope: str, rate: tuple[int, int] 
             current = 1
         else:
             current = throttle_cache.incr(key)
-    except Exception:
+    except Exception as exc:
         # Authentication must not become unthrottled during a cache outage.
+        # Log the failure class so operators can tell an outage from load;
+        # exception text is omitted because backends may echo the cache key.
+        logger.warning("Auth throttle cache unavailable; failing closed (%s)", type(exc).__name__)
         raise APIError("rate_limited", 429, retry_after=duration) from None
     if current > count:
         retry_after = max(1, duration - (int(time.time()) % duration))

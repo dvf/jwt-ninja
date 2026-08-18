@@ -174,15 +174,18 @@ def test_login_throttle_denies_before_authenticator(ninja_client, mocker):
 
 
 @pytest.mark.django_db
-def test_throttle_cache_failure_fails_closed_before_authenticator(ninja_client, mocker):
+def test_throttle_cache_failure_fails_closed_before_authenticator(ninja_client, mocker, caplog):
     authenticator = mocker.patch("jwt_ninja.api.import_string")
     mocker.patch.object(caches["default"], "add", side_effect=RuntimeError("cache down"))
 
-    response = ninja_client.post("/auth/login/", json={"username": "x", "password": "x"})
+    with caplog.at_level("WARNING", logger="jwt_ninja.api"):
+        response = ninja_client.post("/auth/login/", json={"username": "x", "password": "x"})
 
     assert response.status_code == 429
     assert response.json() == {"error_code": "rate_limited"}
     authenticator.assert_not_called()
+    assert any("failing closed (RuntimeError)" in message for message in caplog.messages)
+    assert all("cache down" not in message for message in caplog.messages)
 
 
 @pytest.mark.django_db
