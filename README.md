@@ -10,6 +10,7 @@
 [![CI Status](https://github.com/dvf/jwt-ninja/actions/workflows/check-and-test.yml/badge.svg)](https://github.com/dvf/jwt-ninja/actions/workflows/check-and-test.yml)
 [![License](https://img.shields.io/github/license/dvf/jwt-ninja)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/)
+![PyPI - Downloads](https://img.shields.io/pypi/dw/jwtninja)
 
 ---
 
