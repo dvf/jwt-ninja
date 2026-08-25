@@ -12,7 +12,6 @@ Repository and package administrators must configure controls that workflow code
 - enable GitHub secret scanning, push protection, and private vulnerability reporting;
 - protect the GitHub Actions `pypi` environment with required reviewers and restrict it to protected release tags;
 - configure the PyPI trusted publisher tuple exactly as repository `dvf/jwt-ninja`, workflow `publish.yml`, environment `pypi`;
-- protect the private key whose public fingerprint is pinned in `.github/release-signing-key.asc`; rotate that key only through a reviewed pull request before signing a release;
 - require two-factor authentication for GitHub and PyPI maintainer accounts; and
 - keep branch/ruleset bypass lists minimal and review their audit logs.
 
@@ -24,27 +23,13 @@ Review these settings before every release. A green workflow does not prove that
 2. Confirm `uv lock --check` and `uv sync --frozen --all-groups --all-extras` succeed from a clean checkout.
 3. Run formatting, linting, type checks, tests, both frozen dependency audits, and the package checks documented in CI.
 4. Review the release draft and confirm its semantic version is unused on both GitHub and PyPI. Versions and tags are permanent and must never be reused.
-5. From the exact reviewed commit on `master`, create a signed, annotated tag:
-
-   ```console
-   git switch master
-   git pull --ff-only
-   git status --short
-   git tag -s -a vX.Y.Z -m "jwtninja X.Y.Z"
-   git verify-tag vX.Y.Z
-   git push origin vX.Y.Z
-   ```
-
-   The signature must use the repository-authorized GPG key with fingerprint `B997 F709 7601 BA66 7004 F07B 230D B77D F266 ACAA`. The workflow imports only `.github/release-signing-key.asc` and rejects every other signer. Rotate the pinned key and fingerprint through a reviewed pull request before using a replacement; SSH signatures are not accepted by the current fail-closed workflow.
-
-6. Verify on GitHub that the tag is marked verified, is annotated, points at the intended reviewed commit, and is covered by the protected tag ruleset.
-7. Publish the GitHub Release for that existing tag. Do not allow release tooling to create or retarget the tag.
+5. Publish the release draft from the GitHub UI. Release Drafter computes the version from PR labels (`breaking-change` → major, `feature` → minor, `fix`/`maintenance` → patch) and creates the `vX.Y.Z` tag at the head of `master` when the draft is published. Do not create or push tags by hand.
 
 Never move or delete a published tag, rebuild under an existing version, or reuse a version after any artifact has been exposed. Correct mistakes with a new version.
 
 ## Review the build and approve publishing
 
-The release workflow checks out the released tag, resolves its exact annotated-tag object SHA, requires GitHub's Git Data API to report that object's signature as verified, locally verifies it against the repository-pinned GPG key and exact authorized fingerprint, checks ancestry and the target commit, derives the package version from that exact tag, and builds with locked, pinned backends without build isolation. The unprivileged build job then:
+The release workflow requires the publishing actor to be the authorized maintainer account, checks out the released tag, checks that it matches the release commit and is an ancestor of `master`, derives the package version from that exact tag, and builds with locked, pinned backends without build isolation. The unprivileged build job then:
 
 - builds one wheel and one source distribution exactly once;
 - runs strict `twine check`;
