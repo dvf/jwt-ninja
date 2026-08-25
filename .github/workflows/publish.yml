@@ -33,37 +33,23 @@ jobs:
         with:
           version: "0.9.18"
           enable-cache: false
-      - name: Verify tag signature, ancestry, and locked build environment
+      - name: Verify release, tag ancestry, and locked build environment
         env:
-          GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
-          REPOSITORY: ${{ github.repository }}
-          AUTHORIZED_RELEASE_SIGNER: B997F7097601BA667004F07B230DB77DF266ACAA
+          RELEASE_SHA: ${{ github.sha }}
+          PUBLISHER: ${{ github.actor }}
+          AUTHORIZED_PUBLISHER: dvf
         run: |
           set -euo pipefail
+          # Releases are drafted by release-drafter and published by hand from
+          # the GitHub UI, which creates a lightweight tag. The trust anchor is
+          # the account that clicked publish plus the protected pypi environment.
+          test "$PUBLISHER" = "$AUTHORIZED_PUBLISHER"
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          test "$(git cat-file -t "refs/tags/$RELEASE_TAG")" = tag
-          tag_object_sha="$(git rev-parse "refs/tags/$RELEASE_TAG")"
           test "$(git rev-list -n 1 "refs/tags/$RELEASE_TAG")" = "$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
           git fetch --no-tags origin master:refs/remotes/origin/master
           git merge-base --is-ancestor HEAD refs/remotes/origin/master
-          verified="$(gh api \
-            --header 'Accept: application/vnd.github+json' \
-            --header 'X-GitHub-Api-Version: 2022-11-28' \
-            "/repos/$REPOSITORY/git/tags/$tag_object_sha" \
-            --jq '.verification.verified')"
-          test "$verified" = true
-
-          export GNUPGHOME="$(mktemp -d "$RUNNER_TEMP/jwtninja-gnupg.XXXXXX")"
-          chmod 700 "$GNUPGHOME"
-          gpg --batch --import .github/release-signing-key.asc
-          imported_fingerprint="$(
-            gpg --batch --with-colons --list-keys \
-              | awk -F: '$1 == "fpr" {print $10; exit}'
-          )"
-          test "$imported_fingerprint" = "$AUTHORIZED_RELEASE_SIGNER"
-          signature_status="$(git verify-tag --raw "refs/tags/$RELEASE_TAG" 2>&1)"
-          grep -Fq "[GNUPG:] VALIDSIG $AUTHORIZED_RELEASE_SIGNER " <<< "$signature_status"
 
           uv lock --check
           uv sync --frozen --only-group build --no-install-project
