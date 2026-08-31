@@ -126,7 +126,7 @@ jobs:
         install: [runtime, crypto]
         include:
           - django-label: "5.2"
-            django-spec: "==5.2.16"
+            django-spec: "==5.2.17"
           - django-label: "6.0"
             django-spec: ">=6.0,<6.1"
           - django-label: "6.1"
