@@ -54,7 +54,7 @@ audit = [
 ]
 build = [
     "hatchling==1.32.0",
-    "twine>=6.2.0,<7",
+    "twine>=6.2.0,<8",
     "uv-dynamic-versioning==0.14.0",
 ]
 dev = [
