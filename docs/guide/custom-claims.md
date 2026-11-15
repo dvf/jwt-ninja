@@ -23,9 +23,11 @@ JWT_PAYLOAD_CLASS = "myapp.auth.CustomJWTPayload"
 
     The built-in issuer supplies only base claims. Extra fields need defaults, or a custom token-issuing/login flow must construct them. A [custom authenticator](custom-authenticator.md) alone returns only a user and cannot inject required claims.
 
-## Overriding `user_id`
+## Non-integer user ids
 
-If your User model uses a non-integer primary key (`UUIDField`, `CharField`, etc.), override `user_id` on your payload subclass. The declared type must match what `user.id` is at runtime:
+If your User model has an integer or string primary key (`AutoField`, `CharField`, a prefixed id), there is nothing to do: `JWTPayload` declares `user_id: int | str | UUID`, and both kinds come back from a token as they went in. An integer stays an integer and a string stays a string, so `"5"` never matches the user with id `5`.
+
+A `UUIDField` key needs one line. JSON has no UUID type, so the claim travels as text and decodes as `str` unless you narrow the field:
 
 ```python
 from uuid import UUID
@@ -33,11 +35,7 @@ from jwt_ninja import JWTPayload
 
 
 class UUIDJWTPayload(JWTPayload):
-    user_id: UUID  # or str, depending on your User PK
-
-
-class StrPKJWTPayload(JWTPayload):
-    user_id: str
+    user_id: UUID
 ```
 
-Pydantic is strict about this. The login site passes `user.id` through without coercion, so the declared type and the runtime type must agree. The default `JWTPayload` declares `user_id: int`, which matches Django's default `AutoField` primary key.
+You may narrow it for the other kinds too (`user_id: str`), which gives your own code a precise type. Narrowing is a valid override for a type checker.
