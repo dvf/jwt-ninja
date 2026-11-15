@@ -228,3 +228,40 @@ def test_hmac_rejects_asymmetric_pem_material():
     with pytest.raises(ImproperlyConfigured, match="raw secret material"):
         with override_settings(JWT_SECRET_KEY=pem_like, JWT_ALGORITHM="HS256"):
             pass
+
+
+@pytest.mark.parametrize(
+    "secret_material",
+    [
+        "\ufeff-----BEGIN PUBLIC KEY-----\n" + ("x" * 64),
+        "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTY=",
+        "sk-ssh-ed25519@openssh.com AAAAGnNrLXNzaC1lZDI1NTE5QG9wZW5zc2guY29t",
+        "---- BEGIN SSH2 PUBLIC KEY ----\n" + ("x" * 64),
+        '{\n  "kty": "RSA",\n  "n": "' + ("a" * 64) + '"\n}',
+    ],
+)
+def test_hmac_rejects_bom_ssh_and_formatted_jwk_material(secret_material):
+    with pytest.raises(ImproperlyConfigured, match="raw secret material"):
+        with override_settings(JWT_SECRET_KEY=secret_material, JWT_ALGORITHM="HS256"):
+            pass
+
+
+def test_asymmetric_verifying_key_rejects_private_key():
+    pytest.importorskip("cryptography")
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ed25519
+
+    private_key = ed25519.Ed25519PrivateKey.generate()
+    private_pem = private_key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    ).decode()
+
+    with pytest.raises(ImproperlyConfigured, match="must be a public key"):
+        with override_settings(
+            JWT_ALGORITHM="EdDSA",
+            JWT_SECRET_KEY=private_pem,
+            JWT_VERIFYING_KEY=private_pem,
+        ):
+            pass

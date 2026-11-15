@@ -1,3 +1,4 @@
+import math
 import time
 
 import jwt
@@ -10,7 +11,7 @@ from .types import JWTPayload
 _TOKEN_TYPES: dict[str, str] = {"access": "at+jwt", "refresh": "rt+jwt"}
 
 
-def generate_jwt(payload: JWTPayload) -> str:
+def generate_jwt(payload: JWTPayload, *, now: int | None = None) -> str:
     """Generate a bounded, profile-conformant signed JWT."""
     config = jwt_settings_module.jwt_settings
     try:
@@ -19,12 +20,18 @@ def generate_jwt(payload: JWTPayload) -> str:
         if not isinstance(token_type, str) or token_type not in _TOKEN_TYPES:
             raise ValueError("Unsupported token type")
         jose_type = _TOKEN_TYPES[token_type]
-        now = int(time.time())
+        issued_at = int(time.time()) if now is None else int(now)
         maximum = config.ACCESS_TOKEN_EXPIRE_SECONDS if token_type == "access" else config.REFRESH_TOKEN_EXPIRE_SECONDS
         exp = claims.get("exp")
-        if isinstance(exp, bool) or not isinstance(exp, (int, float)) or exp <= now or exp - now > maximum:
+        if (
+            isinstance(exp, bool)
+            or not isinstance(exp, (int, float))
+            or not math.isfinite(exp)
+            or exp <= issued_at
+            or exp - issued_at > maximum
+        ):
             raise ValueError("Token lifetime is outside the configured profile")
-        claims.update(iss=config.ISSUER, aud=config.AUDIENCE, iat=now, nbf=now)
+        claims.update(iss=config.ISSUER, aud=config.AUDIENCE, iat=issued_at, nbf=issued_at)
         if claims.get("jti") is None:
             claims.pop("jti", None)
         token = jwt.encode(
@@ -67,7 +74,14 @@ def decode_jwt(token: str, payload_class: type[JWTPayload]) -> JWTPayload:
 
         iat = claims["iat"]
         exp = claims["exp"]
-        if isinstance(iat, bool) or isinstance(exp, bool):
+        if (
+            isinstance(iat, bool)
+            or isinstance(exp, bool)
+            or not isinstance(iat, (int, float))
+            or not isinstance(exp, (int, float))
+            or not math.isfinite(iat)
+            or not math.isfinite(exp)
+        ):
             raise JWTInvalidTokenError()
         maximum = config.ACCESS_TOKEN_EXPIRE_SECONDS if token_type == "access" else config.REFRESH_TOKEN_EXPIRE_SECONDS
         if exp <= iat or exp - iat > maximum:
@@ -76,10 +90,12 @@ def decode_jwt(token: str, payload_class: type[JWTPayload]) -> JWTPayload:
         raise JWTExpiredError() from exc
     except JWTInvalidTokenError:
         raise
-    except (jwt.InvalidTokenError, KeyError, TypeError, ValueError, OverflowError) as exc:
+    except (jwt.InvalidTokenError, KeyError, TypeError, ValueError, OverflowError, RecursionError) as exc:
         raise JWTInvalidTokenError() from exc
 
     try:
         return payload_class(**claims)
     except ValidationError as exc:
         raise JWTInvalidPayloadFormat() from exc
+    except RecursionError as exc:
+        raise JWTInvalidTokenError() from exc

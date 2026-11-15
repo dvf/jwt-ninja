@@ -43,6 +43,7 @@ def test_resolve_location_uses_configured_provider():
         "169.254.0.5",  # link-local
         "::1",  # IPv6 loopback
         "fe80::1",  # IPv6 link-local
+        "2600::1%eth0",  # scoped global IPv6 must be rejected
     ],
 )
 def test_resolve_location_skips_unroutable_addresses(ip_address):
@@ -108,9 +109,19 @@ def test_ipapi_co_geolocator_returns_none_on_error_payload(mocker):
     assert ipapi_co_geolocator("8.8.8.8") is None
 
 
-@pytest.mark.parametrize("ip_address", ["not-an-ip", "127.0.0.1", "192.168.1.1", "::1"])
+@pytest.mark.parametrize("ip_address", ["not-an-ip", "127.0.0.1", "192.168.1.1", "::1", "2600::1%eth0"])
 def test_ipapi_co_geolocator_rejects_non_global_input(ip_address, mocker):
     opener = mocker.patch("jwt_ninja.geolocation.urllib.request.build_opener")
     with pytest.raises(ValueError):
         ipapi_co_geolocator(ip_address)
     opener.assert_not_called()
+
+
+def test_resolve_location_normalizes_ipv6_before_calling_provider(mocker):
+    provider = mocker.Mock(return_value=GeoLocation(country_code="US"))
+    mocker.patch.object(jwt_settings_module.jwt_settings, "_GEOLOCATION_PROVIDER", provider)
+
+    result = resolve_location("2606:4700:4700:0000:0000:0000:0000:1111")
+
+    assert result == GeoLocation(country_code="US")
+    provider.assert_called_once_with("2606:4700:4700::1111")

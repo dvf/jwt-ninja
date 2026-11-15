@@ -103,7 +103,11 @@ def test_csrf_bootstrap_allows_cookie_login(ninja_client, test_user):
 
 
 @pytest.mark.django_db
-@override_settings(JWT_REFRESH_TOKEN_TRANSPORT="cookie", JWT_REFRESH_COOKIE_SECURE=False)
+@override_settings(
+    JWT_REFRESH_TOKEN_TRANSPORT="cookie",
+    JWT_REFRESH_COOKIE_SECURE=False,
+    ALLOWED_HOSTS=["*"],
+)
 def test_hostile_origin_fails_csrf_without_auth_state(ninja_client, test_user):
     bootstrap = ninja_client.get("/auth/csrf/")
     response = ninja_client.post(
@@ -118,7 +122,31 @@ def test_hostile_origin_fails_csrf_without_auth_state(ninja_client, test_user):
     )
 
     assert response.status_code == 403
+    assert response.json() == {"error_code": "csrf_failed"}
     assert Session.objects.count() == 0
+
+
+@pytest.mark.django_db
+@override_settings(
+    JWT_REFRESH_TOKEN_TRANSPORT="cookie",
+    JWT_REFRESH_COOKIE_SECURE=False,
+    CSRF_TRUSTED_ORIGINS=["https://app.example"],
+)
+def test_trusted_origin_passes_csrf_under_test_client_without_server_name(ninja_client, test_user):
+    bootstrap = ninja_client.get("/auth/csrf/")
+    response = ninja_client.post(
+        "/auth/login/",
+        json={"username": "dan", "password": "dan"},
+        headers={
+            "X-CSRFTOKEN": bootstrap.json()["csrf_token"],
+            "ORIGIN": "https://app.example",
+        },
+        COOKIES={"csrftoken": bootstrap.cookies["csrftoken"].value},
+        _dont_enforce_csrf_checks=False,
+    )
+
+    assert response.status_code == 200
+    assert response.cookies["refresh_token"].value
 
 
 @override_settings(

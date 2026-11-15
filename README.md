@@ -59,7 +59,7 @@ uv add jwtninja
 pip install jwtninja
 ```
 
-Requires Python **3.12+** and Django **5.2.16 through 6.1** (`>=5.2.16,<6.2`).
+Requires Python **3.12+** and Django **5.2.19 through 6.1** (`>=5.2.19,<6.2`).
 
 Asymmetric signing algorithms (`RS*`, `ES*`, `PS*`, `EdDSA`) need PyJWT's cryptography extra:
 
@@ -224,15 +224,15 @@ JWT_GEOLOCATION_PROVIDER = "myapp.geo.geoip2_geolocator"
 
 ## Endpoints
 
-| Method   | Path                    | Purpose                                         | Success | Errors              |
-| -------- | ----------------------- | ----------------------------------------------- | ------- | ------------------- |
-| `GET`    | `/auth/csrf/`           | Bootstrap Django CSRF for browser cookie flows  | `200`   | —                   |
-| `POST`   | `/auth/login/`          | Issue an access token and a refresh token       | `200`   | `401`               |
-| `POST`   | `/auth/refresh/`        | Refresh an access token                         | `200`   | `400`, `401`        |
-| `GET`    | `/auth/sessions/`       | List the caller's active sessions               | `200`   | `401`               |
-| `DELETE` | `/auth/sessions/{id}/`  | Revoke a single session                         | `200`   | `401`, `404`        |
-| `POST`   | `/auth/logout/`         | Expire the caller's current session             | `200`   | `401`               |
-| `POST`   | `/auth/logout/all/`     | Expire **all** of the caller's active sessions  | `200`   | `401`               |
+| Method   | Path                    | Purpose                                         | Success | Errors                             |
+| -------- | ----------------------- | ----------------------------------------------- | ------- | ---------------------------------- |
+| `GET`    | `/auth/csrf/`           | Bootstrap Django CSRF for browser cookie flows  | `200`   | —                                  |
+| `POST`   | `/auth/login/`          | Issue an access token and a refresh token       | `200`   | `401`, `403`, `415`, `429`         |
+| `POST`   | `/auth/refresh/`        | Refresh an access token                         | `200`   | `400`, `401`, `403`, `415`, `429`  |
+| `GET`    | `/auth/sessions/`       | List the caller's active sessions               | `200`   | `401`                              |
+| `DELETE` | `/auth/sessions/{id}/`  | Revoke a single session                         | `200`   | `401`, `404`                       |
+| `POST`   | `/auth/logout/`         | Expire the caller's current session             | `200`   | `401`                              |
+| `POST`   | `/auth/logout/all/`     | Expire **all** of the caller's active sessions  | `200`   | `401`                              |
 
 ### `POST /auth/login/`
 
@@ -298,14 +298,17 @@ Errors raised by JWT Ninja return `{"error_code": "..."}` with a matching HTTP s
 | `invalid_user`          | `401`  | User attached to token no longer exists or is `is_active=False`. |
 | `session_not_found`     | `401`  | Session referenced by the token has been deleted.                |
 | `session_not_found`     | `404`  | Id passed to `DELETE /auth/sessions/{id}/` is not one of the caller's active sessions. |
-| `session_expired`       | `401`  | Session was logged out, or aged past `JWT_SESSION_EXPIRE_SECONDS`. |
-| `token_reuse_detected`  | `401`  | A retired refresh token was replayed. **The session is revoked.** |
+| `session_expired`        | `401`  | Session was logged out, or aged past `JWT_SESSION_EXPIRE_SECONDS`. |
+| `token_reuse_detected`   | `401`  | A retired refresh token was replayed. **The session is revoked.** |
+| `csrf_failed`            | `403`  | Browser cookie/`both` login or refresh failed Django CSRF validation. |
+| `unsupported_media_type` | `415`  | Login or refresh did not send a non-empty JSON request body.      |
+| `rate_limited`           | `429`  | Pre-authentication login or refresh throttle exceeded (or throttle cache unavailable). |
 
 ## Upgrading
 
 This release tightens several auth behaviors. Read these notes before you upgrade an existing deployment:
 
-- **Runtime floor:** Python 3.12+ and Django >=5.2.16,<6.2 are required; Django 5.0 and 5.1 are no longer supported.
+- **Runtime floor:** Python 3.12+ and Django >=5.2.19,<6.2 are required; Django 5.0 and 5.1 are no longer supported.
 - **Deploy atomically:** do not run mixed old/new authentication workers. Old workers issue legacy-profile tokens that new workers reject. Migrate and replace the worker fleet as one coordinated forced-reauthentication rollout.
 
 - **Refresh tokens no longer authenticate protected routes.** `JWTAuth` now requires `type == "access"`. Any other token type gets `401 invalid_token_type`. If a client sends its refresh token as a `Bearer` credential, it must switch to the access token.
@@ -492,7 +495,11 @@ User = get_user_model()
 
 def magic_link_authenticator(request: HttpRequest, payload) -> User | None:
     try:
-        return User.objects.get(magic_token=payload.token, magic_token_expired_at__gt=now())
+        return User.objects.get(
+            magic_token=payload.token,
+            magic_token_expired_at__gt=now(),
+            is_active=True,
+        )
     except User.DoesNotExist:
         return None
 ```

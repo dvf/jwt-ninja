@@ -2,12 +2,12 @@
 
 ## Supported versions
 
-Security fixes are released for the latest `1.x` release line. Older major and minor release lines are unsupported and should be upgraded before reporting an issue that is already fixed in the latest release.
+Security fixes are released for the latest `2.x` release line. Older major and minor release lines are unsupported and should be upgraded before reporting an issue that is already fixed in the latest release.
 
 | Version | Supported |
 | --- | --- |
-| Latest `1.x` | Yes |
-| `<1.0` | No |
+| Latest `2.x` | Yes |
+| `<2.0` | No |
 
 Supported releases require a maintained Python version and Django within the bounds declared by the installed package. Dependency security updates may raise the minimum patch release within those bounds.
 

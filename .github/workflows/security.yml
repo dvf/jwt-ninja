@@ -126,7 +126,7 @@ jobs:
         install: [runtime, crypto]
         include:
           - django-label: "5.2"
-            django-spec: "==5.2.17"
+            django-spec: "==5.2.19"
           - django-label: "6.0"
             django-spec: ">=6.0,<6.1"
           - django-label: "6.1"
@@ -153,8 +153,8 @@ jobs:
           set -euo pipefail
           uv lock --check
           uv venv --python 3.12 .venv-audit
-          uv pip install --python .venv-audit/bin/python \
-            hatchling==1.32.0 uv-dynamic-versioning==0.14.0
+          mapfile -t build_reqs < <(python -c 'import tomllib; print("\n".join(tomllib.load(open("pyproject.toml", "rb"))["build-system"]["requires"]))')
+          uv pip install --python .venv-audit/bin/python "${build_reqs[@]}"
           project="."
           if [[ "$INSTALL_PROFILE" == "crypto" ]]; then project=".[crypto]"; fi
           uv pip install --python .venv-audit/bin/python --no-build-isolation \

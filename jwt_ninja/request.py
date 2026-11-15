@@ -6,12 +6,21 @@ from . import settings as jwt_settings_module
 
 
 def _parsed_ip(value: str | None):
-    if not value or len(value) > 45:
+    if not value or len(value) > 64:
+        return None
+    stripped = value.strip()
+    # Reject IPv6 zone/scope identifiers ('%iface'): Python's ipaddress accepts
+    # them, but PostgreSQL's inet column rejects them and HTTP headers must not
+    # carry host-local interface qualifiers.
+    if not stripped or len(stripped) > 45 or "%" in stripped:
         return None
     try:
-        return ipaddress.ip_address(value.strip())
+        parsed = ipaddress.ip_address(stripped)
     except ValueError:
         return None
+    if getattr(parsed, "scope_id", None) is not None:
+        return None
+    return parsed
 
 
 def _is_trusted_proxy(address) -> bool:
