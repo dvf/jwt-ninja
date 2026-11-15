@@ -11,8 +11,8 @@ This is an intentionally breaking, fail-closed security migration:
 - Configure an explicit dedicated `JWT_SECRET_KEY`, `JWT_ISSUER`, and `JWT_AUDIENCE` before startup. Django `SECRET_KEY` is no longer a fallback. Asymmetric algorithms require a separate matching `JWT_VERIFYING_KEY`.
 - Short or incompatible JWT keys now stop startup instead of emitting `jwt_ninja.settings.InsecureJWTKeyWarning`; that warning class has been removed. Delete imports or warning filters that referenced it.
 - Run `python manage.py migrate`. Migration 0004 expires all active pre-stamp rows; the nullable field also fails closed for restored/manual NULL rows. Plan a forced login for every user.
-- Existing refresh tokens without a `jti` are rejected rather than adopted. `JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS` must be `0`; previous JTIs are never accepted.
-- Refresh is strict single-use CAS rotation. A replay or concurrent consume commits family revocation and returns `token_reuse_detected`. A lost response is ambiguous and clients must reauthenticate rather than retry.
+- Existing refresh tokens without a `jti` are rejected rather than adopted. `JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS` defaults to `0`: previous JTIs are not accepted unless you set a grace of up to `60` seconds (2.1+).
+- Refresh is strict single-use CAS rotation. A replay or concurrent consume commits family revocation and returns `token_reuse_detected`. A lost response is ambiguous and clients must reauthenticate rather than retry, unless a reuse grace is set.
 - Tokens now require validated issuer, audience, `iat`, `nbf`, `exp`, bounded lifetime, and exact JOSE `typ`. Old tokens without this profile are invalid.
 - The default `JWT_REFRESH_TOKEN_EXPIRE_SECONDS` and `JWT_SESSION_EXPIRE_SECONDS` are now `14 * 86400` (14 days). The previous default read `365 * 3600` but evaluated to only ~15.2 days, so effective behavior is nearly unchanged; set the values explicitly if you relied on the old exact number.
 - Cookie and both transport now enforce Django CSRF on both login and refresh. Add the `GET /auth/csrf/` bootstrap/header flow and send `{}` for cookie refresh.

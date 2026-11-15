@@ -29,7 +29,7 @@ Tokens include and validate `iss`, `aud`, `iat`, `nbf`, and `exp`, enforce `JWT_
 | `JWT_ACCESS_TOKEN_EXPIRE_SECONDS` | `300` | Access lifetime and maximum accepted access lifetime. |
 | `JWT_REFRESH_TOKEN_EXPIRE_SECONDS` | `14 * 86400` | Refresh lifetime and maximum accepted refresh lifetime (14 days). |
 | `JWT_SESSION_EXPIRE_SECONDS` | `14 * 86400` | Session max age (14 days); `0` disables age-out. Cannot exceed refresh lifetime. |
-| `JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS` | `0` | Must remain `0`; positive values fail startup. |
+| `JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS` | `0` | Seconds a replay of the token that was just rotated is tolerated. `0` (default) is strict single use. Maximum `60`. See [Refresh tokens](../guide/refresh-tokens.md#reuse-grace-for-browsers). |
 | `JWT_REFRESH_TOKEN_TRANSPORT` | `body` | `body`, `cookie`, or `both`. Cookie/both enable CSRF checks. |
 | `JWT_REFRESH_COOKIE_*` | secure defaults | `SameSite=None` requires both Secure and HttpOnly. |
 | `JWT_LOGIN_THROTTLE_RATE` | `5/min` | Cache-backed pre-auth limit. `None` or `"0"` explicitly disables. |

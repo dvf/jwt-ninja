@@ -65,7 +65,8 @@ class Session(models.Model):
     security_stamp = models.CharField(max_length=64, null=True, blank=True)
 
     refresh_jti = models.CharField(max_length=43, null=True, blank=True)
-    # Retained for migration/schema compatibility only; neither is authorized.
+    # The JTI that the last rotation replaced, and when. It is authorized only
+    # inside JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS, and never when that is 0.
     previous_refresh_jti = models.CharField(max_length=43, null=True, blank=True)
     rotated_at = models.DateTimeField(null=True, blank=True)
 
@@ -119,6 +120,11 @@ class Session(models.Model):
         The replacement is supplied by the caller so token construction can
         succeed before durable rotation state changes. A stale/replayed token
         revokes the family in the same transaction.
+
+        With JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS above 0, a replay of the
+        JTI that the last rotation replaced returns ``("reused_in_grace",
+        live_jti)`` inside that window and changes nothing. The caller must
+        discard its candidate and mint for ``live_jti`` instead.
         """
         if not replacement_jti or len(replacement_jti) > 43:
             raise ValueError("Replacement refresh JTI is invalid")
@@ -132,6 +138,8 @@ class Session(models.Model):
                 security_stamp=expected_security_stamp,
             ).update(
                 refresh_jti=replacement_jti,
+                previous_refresh_jti=presented_jti,
+                rotated_at=now,
                 updated_at=now,
             )
             if updated == 1:
@@ -150,7 +158,21 @@ class Session(models.Model):
                 current.save(update_fields=["expired_at", "updated_at"])
                 return "security_changed", None
             # The only remaining failed predicate is the exact current JTI: a
-            # concurrent consume or replay. Revoke before leaving the block.
+            # concurrent consume or replay.
+            grace = jwt_settings_module.jwt_settings.REFRESH_TOKEN_REUSE_GRACE_SECONDS
+            if (
+                grace > 0
+                and current.rotated_at is not None
+                and current.previous_refresh_jti is not None
+                and hmac.compare_digest(str(current.previous_refresh_jti), presented_jti)
+                and now - current.rotated_at <= timedelta(seconds=grace)
+            ):
+                # The token that was just rotated, inside the grace window: a
+                # second tab or a retried request. Nothing rotates again. The
+                # caller receives the JTI that is already live, so the family
+                # never forks and every holder converges on one token.
+                return "reused_in_grace", current.refresh_jti
+            # Revoke before leaving the block.
             current.expired_at = now
             current.save(update_fields=["expired_at", "updated_at"])
             return "reused", None

@@ -274,8 +274,9 @@ def login(request: HttpRequest, payload: LoginSchema) -> HttpResponse:
     "refresh/",
     summary="Refresh an access token",
     description=(
-        "Accepts JSON only and strictly consumes a single-use refresh token. "
-        "Cookie/both transport requires Django CSRF. Retry ambiguity requires reauthentication."
+        "Accepts JSON only and consumes a single-use refresh token. "
+        "Cookie/both transport requires Django CSRF. With the default reuse grace of 0, "
+        "retry ambiguity requires reauthentication."
     ),
     openapi_extra=_CSRF_OPENAPI_PARAMETER,
     response={
@@ -360,6 +361,10 @@ def new_refresh_token(request: HttpRequest, payload: RefreshTokenSchema | None =
         raise APIError("session_expired", 401)
     if status == "reused":
         raise APIError("token_reuse_detected", 401)
+    if status == "reused_in_grace" and new_jti is not None:
+        # Nothing was consumed. Mint for the JTI that is already live.
+        access_token, refresh_token = _mint_token_pair(user, session, new_jti)
+        return _build_login_response(access_token, refresh_token)
     if status != "consumed" or new_jti is None:
         raise APIError("invalid_token", 401)
 

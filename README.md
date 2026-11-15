@@ -338,7 +338,7 @@ JWT_LEEWAY_SECONDS = 0
 JWT_ACCESS_TOKEN_EXPIRE_SECONDS = 300  # 5 minutes
 JWT_REFRESH_TOKEN_EXPIRE_SECONDS = 14 * 86400  # 14 days
 JWT_SESSION_EXPIRE_SECONDS = 14 * 86400  # 14 days (0 disables session expiry)
-JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS = 0  # required; positive values fail startup
+JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS = 0  # strict single use; up to 60 tolerates a just-rotated token
 JWT_LOGIN_THROTTLE_RATE = "5/min"  # None or "0" explicitly disables
 JWT_REFRESH_THROTTLE_RATE = "30/min"
 JWT_THROTTLE_CACHE_ALIAS = "default"
@@ -364,7 +364,7 @@ JWT_GEOLOCATION_PROVIDER = None  # Dotted path to a geolocation callable; None d
 | `JWT_ACCESS_TOKEN_EXPIRE_SECONDS`    | `int`                              | Lifetime of the short-lived access token.                                                      |
 | `JWT_REFRESH_TOKEN_EXPIRE_SECONDS`   | `int`                              | Lifetime of the refresh token.                                                                 |
 | `JWT_SESSION_EXPIRE_SECONDS`         | `int`                              | Hard max age applied to a `Session` at creation. `0` means sessions live until logged out.     |
-| `JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS` | `int`                           | Must be `0`. Refresh tokens are strictly single-use. |
+| `JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS` | `int`                           | Seconds a replay of the token that was just rotated is tolerated. `0` (default) is strict single use. Maximum `60`. |
 | `JWT_USER_LOGIN_AUTHENTICATOR`       | `str`                              | Dotted path to a callable `(request, payload) -> User \| None` used by `/auth/login/`.         |
 | `JWT_PAYLOAD_CLASS`                  | `str`                              | Dotted path to a `JWTPayload` subclass if you need custom claims.                              |
 | `JWT_REFRESH_TOKEN_TRANSPORT`        | `"body" \| "cookie" \| "both"` | Where refresh tokens are returned and read.                                                    |
@@ -434,7 +434,19 @@ The server treats a retired token as evidence that the token leaked, and **revok
 
 ### Strict single use and ambiguous outcomes
 
-There is no grace window. Rotation atomically consumes exactly the current `jti`; concurrent or replayed use revokes the whole session and returns `401 token_reuse_detected`. If a client loses a successful refresh response, it must **not retry the old token**: the outcome is ambiguous and retrying can revoke the winner's replacement token. Reauthenticate instead.
+By default there is no grace window. Rotation atomically consumes exactly the current `jti`; concurrent or replayed use revokes the whole session and returns `401 token_reuse_detected`. If a client loses a successful refresh response, it must **not retry the old token**: the outcome is ambiguous and retrying can revoke the winner's replacement token. Reauthenticate instead.
+
+### Reuse grace for browsers
+
+Browser tabs share one refresh cookie and cannot coordinate. Two tabs that refresh at the same moment, or a request retried after a lost response, present the same token twice. Under strict single use the second one revokes the session and the person is signed out.
+
+Set `JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS` (maximum `60`) to tolerate this:
+
+- Only the token that the last rotation replaced is tolerated, and only for that many seconds after the rotation.
+- The replay does not rotate again. It receives a fresh token pair for the `jti` that is already live, so every holder converges on one token and the family never forks.
+- After the window, or for any older token, a replay revokes the session as before.
+
+The cost: a stolen refresh token stays usable for up to that many seconds after its owner rotates it. Keep the value small. `0` remains the default.
 
 ### Upgrading existing deployments
 

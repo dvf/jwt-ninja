@@ -167,8 +167,12 @@ class JWTSettings(BaseSettings):
     )
     REFRESH_COOKIE_PATH: str = Field(default_factory=lambda: _django_setting("REFRESH_COOKIE_PATH", "/auth/refresh/"))
     REFRESH_COOKIE_DOMAIN: str | None = Field(default_factory=lambda: _django_setting("REFRESH_COOKIE_DOMAIN"))
+    # 0 keeps refresh strictly single-use. A positive value tolerates a replay
+    # of the token that was just rotated, for this many seconds: two browser
+    # tabs share one refresh cookie, and a retried request is not a theft.
+    # Bounded, because every second is a second a stolen token still works.
     REFRESH_TOKEN_REUSE_GRACE_SECONDS: int = Field(
-        default_factory=lambda: _django_setting("REFRESH_TOKEN_REUSE_GRACE_SECONDS", 0), ge=0
+        default_factory=lambda: _django_setting("REFRESH_TOKEN_REUSE_GRACE_SECONDS", 0), ge=0, le=60
     )
 
     LOGIN_THROTTLE_RATE: str | None = Field(default_factory=lambda: _django_setting("LOGIN_THROTTLE_RATE", "5/min"))
@@ -217,10 +221,6 @@ class JWTSettings(BaseSettings):
             raise ImproperlyConfigured("JWT_ISSUER and JWT_AUDIENCE must be explicit non-empty strings.")
         if not self.THROTTLE_CACHE_ALIAS.strip():
             raise ImproperlyConfigured("JWT_THROTTLE_CACHE_ALIAS must be a non-empty Django cache alias.")
-        if self.REFRESH_TOKEN_REUSE_GRACE_SECONDS != 0:
-            raise ImproperlyConfigured(
-                "JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS must be 0; refresh tokens are single-use."
-            )
         if self.REFRESH_COOKIE_SAMESITE == "None" and not (self.REFRESH_COOKIE_SECURE and self.REFRESH_COOKIE_HTTPONLY):
             raise ImproperlyConfigured("SameSite=None refresh cookies require Secure=True and HttpOnly=True.")
         if self.SESSION_EXPIRE_SECONDS and self.SESSION_EXPIRE_SECONDS > self.REFRESH_TOKEN_EXPIRE_SECONDS:
