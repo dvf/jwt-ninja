@@ -6,7 +6,9 @@ used for something they were not issued for.
 """
 
 import time
+from secrets import token_urlsafe
 
+import jwt
 import pytest
 from django.contrib.admin.sites import AdminSite
 from django.core.exceptions import ImproperlyConfigured
@@ -117,10 +119,79 @@ def test_replaying_a_rotated_token_revokes_the_session(ninja_client, refresh_tok
     assert followup.status_code == 401
 
 
-def test_positive_grace_window_is_rejected():
-    with pytest.raises(ImproperlyConfigured, match="must be 0"):
-        with override_settings(JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS=30):
+def test_grace_window_above_the_cap_is_rejected():
+    with pytest.raises(ImproperlyConfigured, match="REFRESH_TOKEN_REUSE_GRACE_SECONDS"):
+        with override_settings(JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS=61):
             pass
+
+
+def _jti(token: str) -> str:
+    return jwt.decode(token, options={"verify_signature": False})["jti"]
+
+
+@pytest.mark.django_db
+@override_settings(JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS=30)
+def test_replay_inside_the_grace_window_converges_on_the_live_token(ninja_client, refresh_token, user_session):
+    """
+    Two tabs share one refresh cookie and refresh together. The second one
+    presents the token the first just rotated. It is not a theft: it receives
+    the JTI that is already live, and nothing rotates a second time.
+    """
+    first = ninja_client.post("/auth/refresh/", json={"refresh_token": refresh_token})
+    replay = ninja_client.post("/auth/refresh/", json={"refresh_token": refresh_token})
+
+    assert first.status_code == 200
+    assert replay.status_code == 200
+    assert _jti(replay.json()["refresh_token"]) == _jti(first.json()["refresh_token"])
+
+    user_session.refresh_from_db()
+    assert user_session.is_expired is False
+    assert user_session.refresh_jti == _jti(first.json()["refresh_token"])
+
+    # The first caller's token is still the live one.
+    followup = ninja_client.post("/auth/refresh/", json={"refresh_token": first.json()["refresh_token"]})
+    assert followup.status_code == 200
+
+
+@pytest.mark.django_db
+@override_settings(JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS=30)
+def test_replay_after_the_grace_window_revokes_the_session(ninja_client, refresh_token, user_session, freezer):
+    first = ninja_client.post("/auth/refresh/", json={"refresh_token": refresh_token})
+    assert first.status_code == 200
+
+    freezer.tick(31)
+    replay = ninja_client.post("/auth/refresh/", json={"refresh_token": refresh_token})
+
+    assert replay.status_code == 401
+    assert replay.json()["error_code"] == "token_reuse_detected"
+    user_session.refresh_from_db()
+    assert user_session.is_expired is True
+
+
+@pytest.mark.django_db
+@override_settings(JWT_REFRESH_TOKEN_REUSE_GRACE_SECONDS=30)
+def test_grace_covers_only_the_token_that_was_just_rotated(user_session, test_user):
+    """A token two rotations old is a replay, even inside the window."""
+    stamp = user_session.security_stamp
+    oldest = user_session.initialize_refresh_jti()
+    middle, newest = token_urlsafe(32), token_urlsafe(32)
+
+    def consume(presented: str, replacement: str):
+        return Session.consume_refresh_jti(
+            session_id=user_session.id,
+            user_id=test_user.id,
+            presented_jti=presented,
+            replacement_jti=replacement,
+            expected_security_stamp=stamp,
+        )
+
+    assert consume(oldest, middle) == ("consumed", middle)
+    assert consume(middle, newest) == ("consumed", newest)
+    assert consume(middle, token_urlsafe(32)) == ("reused_in_grace", newest)
+    assert consume(oldest, token_urlsafe(32)) == ("reused", None)
+
+    user_session.refresh_from_db()
+    assert user_session.is_expired is True
 
 
 @pytest.mark.django_db
