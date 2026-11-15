@@ -38,4 +38,4 @@ class UUIDJWTPayload(JWTPayload):
     user_id: UUID
 ```
 
-You may narrow it for the other kinds too (`user_id: str`), which gives your own code a precise type. Narrowing is a valid override for a type checker.
+You may narrow it for the other kinds too (`user_id: str`) to give your own code a precise type. Be aware that a type checker which treats model fields as read-write (pyrefly, for one) reports any narrowed override, the `UUID` one included, because a subclass may not change the type of a writable attribute. Suppress that line, or keep the stock type and convert where you use the value (`str(payload.user_id)`).
