@@ -79,7 +79,7 @@ jobs:
       matrix:
         python: ["3.12", "3.13", "3.14"]
         django:
-          - "==5.2.17"
+          - "==5.2.19"
           - ">=6.0,<6.1"
           - ">=6.1,<6.2"
     steps:
@@ -101,8 +101,8 @@ jobs:
           DJANGO_SPEC: ${{ matrix.django }}
         run: |
           uv venv --python "${{ matrix.python }}" .venv-compat
-          uv pip install --python .venv-compat/bin/python \
-            hatchling==1.32.0 uv-dynamic-versioning==0.14.0
+          mapfile -t build_reqs < <(python -c 'import tomllib; print("\n".join(tomllib.load(open("pyproject.toml", "rb"))["build-system"]["requires"]))')
+          uv pip install --python .venv-compat/bin/python "${build_reqs[@]}"
           uv pip install --python .venv-compat/bin/python --no-build-isolation \
             ".[crypto]" "django${DJANGO_SPEC}" \
             "pytest>=9.0.3,<10" "pytest-django>=4.11,<5" \

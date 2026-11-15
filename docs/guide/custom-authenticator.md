@@ -16,7 +16,11 @@ User = get_user_model()
 
 def magic_link_authenticator(request: HttpRequest, payload) -> User | None:
     try:
-        return User.objects.get(magic_token=payload.token, magic_token_expired_at__gt=now())
+        return User.objects.get(
+            magic_token=payload.token,
+            magic_token_expired_at__gt=now(),
+            is_active=True,
+        )
     except User.DoesNotExist:
         return None
 ```

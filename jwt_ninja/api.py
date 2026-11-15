@@ -73,6 +73,30 @@ def _enforce_rate_limit(request: HttpRequest, scope: str, rate: tuple[int, int] 
         raise APIError("rate_limited", 429, retry_after=ceil(retry_after))
 
 
+def _csrf_rejected(request: HttpRequest) -> bool:
+    meta = getattr(request, "META", None)
+    missing_server_name = isinstance(meta, dict) and "HTTP_HOST" not in meta and "SERVER_NAME" not in meta
+    missing_server_port = missing_server_name and isinstance(meta, dict) and "SERVER_PORT" not in meta
+    if missing_server_name and isinstance(meta, dict):
+        # Synthetic test requests (e.g. django-ninja TestClient >= 1.7) omit WSGI
+        # SERVER_NAME/SERVER_PORT. An empty host never satisfies RFC 1034/1035
+        # validation (raises DisallowedHost even under ALLOWED_HOSTS=['*']), so
+        # CsrfViewMiddleware rejects untrusted Origins while still checking
+        # CSRF_TRUSTED_ORIGINS without fabricating an implicit host.
+        meta["SERVER_NAME"] = ""
+    if missing_server_port and isinstance(meta, dict):
+        meta["SERVER_PORT"] = ""
+    try:
+        return bool(check_csrf(request))
+    except KeyError:
+        return True
+    finally:
+        if missing_server_name and isinstance(meta, dict):
+            meta.pop("SERVER_NAME", None)
+        if missing_server_port and isinstance(meta, dict):
+            meta.pop("SERVER_PORT", None)
+
+
 class _BrowserBoundaryGuard:
     """Ninja auth callback: runs before request body parsing."""
 
@@ -83,7 +107,7 @@ class _BrowserBoundaryGuard:
         if not _is_json_media_type(request.headers.get("Content-Type")):
             raise APIError("unsupported_media_type", 415)
         config = jwt_settings_module.jwt_settings
-        if config.REFRESH_TOKEN_TRANSPORT in {"cookie", "both"} and check_csrf(request):
+        if config.REFRESH_TOKEN_TRANSPORT in {"cookie", "both"} and _csrf_rejected(request):
             raise APIError("csrf_failed", 403)
         rate = config.login_rate if self.scope == "login" else config.refresh_rate
         _enforce_rate_limit(request, self.scope, rate)
@@ -144,7 +168,7 @@ def _mint_token_pair(user, session: Session, refresh_jti: str) -> tuple[str, str
         session_id=session.id,
         jti=refresh_jti,
     )
-    return generate_jwt(access_payload), generate_jwt(refresh_payload)
+    return generate_jwt(access_payload, now=now), generate_jwt(refresh_payload, now=now)
 
 
 def _get_refresh_token(request: HttpRequest, payload: RefreshTokenSchema | None) -> str:
@@ -209,7 +233,7 @@ def login(request: HttpRequest, payload: LoginSchema) -> HttpResponse:
     if len(payload.username) > config.MAX_USERNAME_LENGTH or len(payload.password) > config.MAX_PASSWORD_LENGTH:
         raise APIError("invalid_credentials", 401)
     user = import_string(config.USER_LOGIN_AUTHENTICATOR)(request, payload)
-    if not user:
+    if not user or not getattr(user, "is_active", False):
         raise APIError("invalid_credentials", 401)
 
     # Snapshot the exact credentials that authentication accepted. The locked

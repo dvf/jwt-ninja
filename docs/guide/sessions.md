@@ -29,6 +29,7 @@ Geolocation is off by default. To fill the `location` field, point `JWT_GEOLOCAT
 
 ```python title="settings.py"
 JWT_GEOLOCATION_PROVIDER = "jwt_ninja.geolocation.ipapi_co_geolocator"
+JWT_GEOLOCATION_THIRD_PARTY_CONSENT = True
 ```
 
 The provider runs one time per login, and JWT Ninja stores the result on the session's `location` field. The list endpoint reads the stored value and does no lookups. If the provider fails, JWT Ninja logs the error and completes the login without a location. JWT Ninja does not send private, loopback, or other non-routable addresses to the provider.

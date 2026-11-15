@@ -6,7 +6,7 @@ icon: lucide/arrow-up-circle
 
 This is an intentionally breaking, fail-closed security migration:
 
-- Upgrade the runtime first: Python 3.12+ and Django >=5.2.16,<6.2 are required. Django 5.0 and 5.1 are no longer supported.
+- Upgrade the runtime first: Python 3.12+ and Django >=5.2.19,<6.2 are required. Django 5.0 and 5.1 are no longer supported.
 - Deploy atomically rather than running mixed old/new authentication workers. Old workers issue legacy-profile tokens that new workers reject; coordinate migration and replacement as a forced-reauthentication rollout.
 - Configure an explicit dedicated `JWT_SECRET_KEY`, `JWT_ISSUER`, and `JWT_AUDIENCE` before startup. Django `SECRET_KEY` is no longer a fallback. Asymmetric algorithms require a separate matching `JWT_VERIFYING_KEY`.
 - Short or incompatible JWT keys now stop startup instead of emitting `jwt_ninja.settings.InsecureJWTKeyWarning`; that warning class has been removed. Delete imports or warning filters that referenced it.

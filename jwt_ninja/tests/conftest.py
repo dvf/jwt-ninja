@@ -2,6 +2,7 @@ import time
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import AbstractBaseUser
 from django.core.cache import cache
 from django.utils import timezone
 from ninja import NinjaAPI
@@ -42,7 +43,7 @@ def ninja_client() -> TestClient:
 
 
 @pytest.fixture
-def test_user() -> User:
+def test_user() -> AbstractBaseUser:
     return User.objects.create_user(
         email="dan@example.com",
         username="dan",

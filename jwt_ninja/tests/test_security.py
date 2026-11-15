@@ -8,8 +8,9 @@ used for something they were not issued for.
 import time
 
 import pytest
+from django.contrib.admin.sites import AdminSite
 from django.core.exceptions import ImproperlyConfigured
-from django.test import RequestFactory, override_settings
+from django.test import RequestFactory, modify_settings, override_settings
 from django.utils import timezone
 
 from ..cryptography import generate_jwt
@@ -301,3 +302,62 @@ def test_token_without_exp_is_rejected():
 def test_expired_access_token_is_not_generated():
     with pytest.raises(JWTInvalidTokenError):
         generate_jwt(JWTPayload(user_id=1, type="access", exp=int(time.time()) - 1, session_id="whatever"))
+
+
+@override_settings(JWT_TRUSTED_PROXY_CIDRS=["127.0.0.0/8"])
+def test_scoped_ipv6_addresses_are_rejected_in_client_ip_resolution():
+    forwarded_request = RequestFactory().post(
+        "/auth/login/",
+        REMOTE_ADDR="127.0.0.1",
+        HTTP_X_FORWARDED_FOR="2600::1%eth0",
+    )
+    assert get_client_ip(forwarded_request) == "127.0.0.1"
+
+    remote_request = RequestFactory().post(
+        "/auth/login/",
+        REMOTE_ADDR="fe80::1%lo0",
+    )
+    assert get_client_ip(remote_request) is None
+
+
+@override_settings(JWT_TRUSTED_PROXY_CIDRS=["::1/128"])
+def test_max_length_ipv6_with_forwarded_whitespace_is_accepted():
+    max_ipv6 = "ffff:ffff:ffff:ffff:ffff:ffff:255.255.255.255"
+    assert len(max_ipv6) == 45
+    request = RequestFactory().post(
+        "/auth/login/",
+        REMOTE_ADDR="::1",
+        HTTP_X_FORWARDED_FOR=f" {max_ipv6}, ::1",
+    )
+    assert get_client_ip(request) == str(__import__("ipaddress").ip_address(max_ipv6))
+
+
+@pytest.mark.django_db
+@override_settings(JWT_MAX_ACTIVE_SESSIONS=1)
+def test_inactive_user_returned_by_custom_authenticator_cannot_login(ninja_client, test_user, mocker):
+    existing = Session.create_session(user=test_user, ip_address="1.1.1.1")
+    test_user.is_active = False
+    test_user.save(update_fields=["is_active"])
+    mocker.patch("jwt_ninja.api.import_string", return_value=lambda request, payload: test_user)
+
+    response = ninja_client.post("/auth/login/", json={"username": "dan", "password": "dan"})
+
+    assert response.status_code == 401
+    assert response.json() == {"error_code": "invalid_credentials"}
+    existing.refresh_from_db()
+    assert not existing.is_expired
+    assert Session.objects.count() == 1
+
+
+@modify_settings(INSTALLED_APPS={"append": "django.contrib.admin"})
+def test_session_admin_is_strictly_read_only_and_hides_secret_fields():
+    from ..admin import SessionAdmin
+
+    model_admin = SessionAdmin(Session, AdminSite())
+    assert model_admin.check() == []
+    request = RequestFactory().get("/admin/jwt_ninja/session/")
+    assert model_admin.has_add_permission(request) is False
+    assert model_admin.has_change_permission(request) is False
+    assert model_admin.has_change_permission(request, Session()) is False
+    for secret_field in ("security_stamp", "refresh_jti", "previous_refresh_jti"):
+        assert secret_field in (model_admin.exclude or ())

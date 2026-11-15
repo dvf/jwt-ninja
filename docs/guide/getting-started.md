@@ -20,7 +20,7 @@ JWT Ninja is a standard Django app. Install it, run migrations, and mount the ro
     pip install jwtninja
     ```
 
-Requires Python **3.12+** and Django **5.2.16 through 6.1** (`>=5.2.16,<6.2`).
+Requires Python **3.12+** and Django **5.2.19 through 6.1** (`>=5.2.19,<6.2`).
 
 !!! info "Asymmetric algorithms"
 
@@ -34,13 +34,18 @@ Requires Python **3.12+** and Django **5.2.16 through 6.1** (`>=5.2.16,<6.2`).
 
 ## Quick start
 
-**1.** Add `jwt_ninja` to your `INSTALLED_APPS`:
+**1.** Add `jwt_ninja` to your `INSTALLED_APPS` and configure a dedicated signing profile (Django's `SECRET_KEY` is never used as a fallback):
 
 ```python title="settings.py"
 INSTALLED_APPS = [
     ...,
     "jwt_ninja",
 ]
+
+JWT_SECRET_KEY = "a-separate-random-key-of-at-least-32-bytes"
+JWT_ISSUER = "https://auth.example.com"
+JWT_AUDIENCE = "example-api"
+# Asymmetric algorithms additionally require JWT_VERIFYING_KEY (the public key).
 ```
 
 **2.** Run migrations to create the `Session` table:
@@ -62,7 +67,7 @@ api.add_router("auth/", auth_router)
 api.add_exception_handler(APIError, error_handler)
 ```
 
-This gives you `/auth/login/`, `/auth/refresh/`, `/auth/sessions/`, `/auth/sessions/{id}/`, `/auth/logout/`, and `/auth/logout/all/`.
+This gives you `/auth/csrf/`, `/auth/login/`, `/auth/refresh/`, `/auth/sessions/`, `/auth/sessions/{id}/`, `/auth/logout/`, and `/auth/logout/all/`.
 
 ## Next steps
 

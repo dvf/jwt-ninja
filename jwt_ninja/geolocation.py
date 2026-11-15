@@ -17,12 +17,13 @@ class _RejectRedirects(urllib.request.HTTPRedirectHandler):
 
 def resolve_location(ip_address: str | None) -> GeoLocation | None:
     provider = jwt_settings_module.jwt_settings.geolocation_provider
-    if provider is None or not ip_address:
+    if provider is None or not ip_address or "%" in ip_address:
         return None
     try:
-        if not ipaddress.ip_address(ip_address).is_global:
+        parsed_ip = ipaddress.ip_address(ip_address.strip())
+        if getattr(parsed_ip, "scope_id", None) is not None or not parsed_ip.is_global:
             return None
-        value = provider(ip_address)
+        value = provider(parsed_ip.compressed)
         return GeoLocation.model_validate(value) if value is not None else None
     except Exception as exc:
         # Do not include exception text or traceback: urllib exceptions may
@@ -32,8 +33,10 @@ def resolve_location(ip_address: str | None) -> GeoLocation | None:
 
 
 def ipapi_co_geolocator(ip_address: str) -> GeoLocation | None:
-    parsed_ip = ipaddress.ip_address(ip_address)
-    if not parsed_ip.is_global:
+    if "%" in ip_address:
+        raise ValueError("Geolocation does not accept scoped IPv6 addresses")
+    parsed_ip = ipaddress.ip_address(ip_address.strip())
+    if getattr(parsed_ip, "scope_id", None) is not None or not parsed_ip.is_global:
         raise ValueError("Geolocation requires a global IP address")
     config = jwt_settings_module.jwt_settings
     http_request = urllib.request.Request(

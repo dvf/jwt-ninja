@@ -55,6 +55,24 @@ def _parse_rate(value: str | None, name: str) -> tuple[int, int] | None:
     return count, duration
 
 
+_ASYMMETRIC_TEXT_PREFIXES = (
+    "ssh-",
+    "ecdsa-sha2-",
+    "sk-ecdsa-",
+    "sk-ssh-",
+    "---- BEGIN ",
+)
+
+
+def _looks_like_asymmetric_or_jwk_material(value: str) -> bool:
+    normalized = value.lstrip("\ufeff").lstrip()
+    if "-----BEGIN " in normalized or normalized.startswith(_ASYMMETRIC_TEXT_PREFIXES):
+        return True
+    if normalized.startswith("{") and ('"kty"' in normalized or "'kty'" in normalized):
+        return True
+    return False
+
+
 def _validate_key_profile(config: "JWTSettings") -> None:
     algorithm = config.ALGORITHM
     if algorithm.lower() == "none":
@@ -71,8 +89,7 @@ def _validate_key_profile(config: "JWTSettings") -> None:
         encoded_key = signing_key.encode()
         if len(encoded_key) < minimum:
             raise ImproperlyConfigured(f"JWT_SECRET_KEY must be at least {minimum} bytes for {algorithm}.")
-        normalized = signing_key.lstrip()
-        if "-----BEGIN " in normalized or normalized.startswith(("ssh-", '{"kty"', "{'kty'")):
+        if _looks_like_asymmetric_or_jwk_material(signing_key):
             raise ImproperlyConfigured("HMAC JWT_SECRET_KEY must be raw secret material, not an asymmetric key.")
         if config.VERIFYING_KEY is not None and config.VERIFYING_KEY != signing_key:
             raise ImproperlyConfigured("HMAC JWT_VERIFYING_KEY must be omitted or exactly match JWT_SECRET_KEY.")
@@ -90,6 +107,8 @@ def _validate_key_profile(config: "JWTSettings") -> None:
         algorithm_impl = jwt.algorithms.get_default_algorithms()[algorithm]
         signing = algorithm_impl.prepare_key(signing_key)
         verifying = algorithm_impl.prepare_key(config.VERIFYING_KEY)
+        if hasattr(verifying, "private_bytes"):
+            raise ImproperlyConfigured("Asymmetric JWT_VERIFYING_KEY must be a public key, not a private key.")
         if algorithm.startswith(("RS", "PS")):
             if getattr(signing, "key_size", 0) < 2048 or getattr(verifying, "key_size", 0) < 2048:
                 raise ImproperlyConfigured("RSA/PS JWT keys must be at least 2048 bits.")

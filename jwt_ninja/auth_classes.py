@@ -1,6 +1,7 @@
 import dataclasses
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import AbstractBaseUser
 from django.core.exceptions import ValidationError
 from django.db import DataError
 from django.http import HttpRequest
@@ -18,7 +19,7 @@ _SESSION_ID_MAX_LENGTH = 43
 
 @dataclasses.dataclass
 class AuthDetails:
-    user: User
+    user: AbstractBaseUser
     session: Session
 
 

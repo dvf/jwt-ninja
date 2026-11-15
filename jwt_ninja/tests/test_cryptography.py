@@ -1,8 +1,10 @@
+import base64
 import time
 from datetime import timedelta
 
 import jwt
 import pytest
+from django.test import override_settings
 
 from ..cryptography import decode_jwt, generate_jwt
 from ..errors import JWTExpiredError, JWTInvalidTokenError
@@ -84,3 +86,58 @@ def test_wrong_jose_type_is_rejected():
 def test_oversized_lifetime_is_rejected_at_generation():
     with pytest.raises(JWTInvalidTokenError):
         generate_jwt(payload(lifetime=301))
+
+
+def test_explicit_now_avoids_second_boundary_skew():
+    fixed_now = int(time.time())
+    token = generate_jwt(
+        JWTPayload(user_id=1, type="access", exp=fixed_now + 1, session_id="abc"),
+        now=fixed_now,
+    )
+    decoded = decode_jwt(token, JWTPayload)
+    assert decoded.iat == fixed_now
+    assert decoded.exp == fixed_now + 1
+
+
+def test_deeply_nested_untrusted_jwt_segment_raises_invalid_token():
+    nested = base64.urlsafe_b64encode((b'{"a":' * 1200) + b"1" + (b"}" * 1200)).rstrip(b"=").decode()
+    with pytest.raises(JWTInvalidTokenError):
+        decode_jwt(f"{nested}.e30.sig", JWTPayload)
+
+
+@pytest.mark.parametrize("algorithm", ["RS256", "ES256", "EdDSA"])
+def test_asymmetric_algorithms_roundtrip(algorithm):
+    pytest.importorskip("cryptography")
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec, ed25519, rsa
+
+    if algorithm == "RS256":
+        private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    elif algorithm == "ES256":
+        private_key = ec.generate_private_key(ec.SECP256R1())
+    else:
+        private_key = ed25519.Ed25519PrivateKey.generate()
+
+    private_pem = private_key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    ).decode()
+    public_pem = (
+        private_key.public_key()
+        .public_bytes(
+            serialization.Encoding.PEM,
+            serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+        .decode()
+    )
+
+    with override_settings(
+        JWT_ALGORITHM=algorithm,
+        JWT_SECRET_KEY=private_pem,
+        JWT_VERIFYING_KEY=public_pem,
+    ):
+        token = generate_jwt(payload())
+        decoded = decode_jwt(token, JWTPayload)
+        assert decoded.user_id == 1
+        assert decoded.session_id == "abc"
