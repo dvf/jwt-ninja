@@ -1,6 +1,7 @@
 import base64
 import time
 from datetime import timedelta
+from uuid import UUID, uuid4
 
 import jwt
 import pytest
@@ -14,6 +15,29 @@ from ..types import JWTPayload
 
 def payload(token_type="access", lifetime=300):
     return JWTPayload(user_id=1, type=token_type, exp=int(time.time()) + lifetime, session_id="abc")
+
+
+@pytest.mark.parametrize("user_id", [7, "usr_01jq3v", "7"])
+def test_user_id_keeps_its_value_and_its_type(user_id):
+    """An int key and a str key both work with the stock payload, and a
+    numeric string never turns into the integer it looks like."""
+    original = JWTPayload(user_id=user_id, type="access", exp=int(time.time()) + 300, session_id="abc")
+
+    decoded = decode_jwt(generate_jwt(original), JWTPayload)
+
+    assert decoded.user_id == user_id
+    assert type(decoded.user_id) is type(user_id)
+
+
+def test_a_uuid_user_id_needs_a_narrowed_payload():
+    class UUIDPayload(JWTPayload):
+        user_id: UUID
+
+    key = uuid4()
+    token = generate_jwt(UUIDPayload(user_id=key, type="access", exp=int(time.time()) + 300, session_id="abc"))
+
+    assert decode_jwt(token, UUIDPayload).user_id == key
+    assert decode_jwt(token, JWTPayload).user_id == str(key)
 
 
 def test_roundtrip_preserves_fields_and_registered_claims():

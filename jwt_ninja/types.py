@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Generic, Literal, TypeVar
+from uuid import UUID
 
 from ninja import Schema
 from pydantic import BaseModel, Field
@@ -20,7 +21,9 @@ class JWTPayload(BaseModel):
     jti: str | None = None
 
     # Custom claims
-    user_id: int
+    # The user's primary key. An int or str key round-trips as it is. A UUID
+    # key leaves the token as text, so narrow this to ``UUID`` on a subclass.
+    user_id: int | str | UUID
     session_id: str
 
 
